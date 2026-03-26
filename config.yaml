@@ -1,0 +1,17 @@
+search:
+  keywords:
+    - "AI/ML Engineer"
+    - "Machine Learning Engineer"
+  location: "Germany"
+  experience_level:
+    - "MID_SENIOR_LEVEL"
+    - "ENTRY_LEVEL"
+  blacklist_companies: []
+  max_jobs_per_run: 20
+
+schedule:
+  hour: 8
+  minute: 0
+
+resume_matcher:
+  base_url: "http://localhost:8000"
