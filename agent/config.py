@@ -21,12 +21,12 @@ class Settings(BaseSettings):
 
 
 def load_yaml() -> dict:
-    with open(CONFIG_PATH) as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def save_yaml(data: dict) -> None:
-    with open(CONFIG_PATH, "w") as f:
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
 
 
@@ -71,5 +71,19 @@ def set_blacklist_companies(companies: list[str]) -> None:
 
 
 def get_schedule_config() -> dict:
+    """Load schedule config from YAML. Supports both old (hour) and new (hours) format."""
     raw = load_yaml()
-    return raw.get("schedule", {"hour": 8, "minute": 0})
+    schedule = raw.get("schedule", {})
+
+    # Backward compatibility: if 'hour' exists, convert to 'hours' list
+    if "hour" in schedule:
+        hours = [schedule["hour"]]
+    else:
+        hours = schedule.get("hours", [8])  # Default to 8:00 if neither set
+
+    minute = schedule.get("minute", 0)
+
+    return {
+        "hours": hours,  # List of hours to run the pipeline
+        "minute": minute,
+    }

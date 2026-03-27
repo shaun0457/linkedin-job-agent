@@ -10,7 +10,8 @@ search:
   max_jobs_per_run: 20
 
 schedule:
-  hour: 8
+  # 支援多個定時時間點 (hours 是列表, 每個時間點會添加一個 scheduler job)
+  hours: [8, 18]  # 台灣時間 8:00 和 18:00
   minute: 0
 
 resume_matcher:

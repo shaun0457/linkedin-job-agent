@@ -156,13 +156,25 @@ def test_save_yaml_writes_to_config_path(tmp_path, monkeypatch):
 # ── get_schedule_config ──────────────────────────────────────────────────────
 
 
-def test_get_schedule_config_returns_hour_and_minute():
+def test_get_schedule_config_returns_hours_and_minute():
     from agent.config import get_schedule_config
 
+    # New format with 'hours' list
+    with patch("agent.config.load_yaml", return_value={"schedule": {"hours": [9, 18], "minute": 30}}):
+        sc = get_schedule_config()
+
+    assert sc["hours"] == [9, 18]
+    assert sc["minute"] == 30
+
+
+def test_get_schedule_config_backward_compat_single_hour():
+    from agent.config import get_schedule_config
+
+    # Old format with single 'hour' → convert to 'hours' list
     with patch("agent.config.load_yaml", return_value={"schedule": {"hour": 9, "minute": 30}}):
         sc = get_schedule_config()
 
-    assert sc["hour"] == 9
+    assert sc["hours"] == [9]
     assert sc["minute"] == 30
 
 
@@ -172,5 +184,5 @@ def test_get_schedule_config_defaults_when_missing():
     with patch("agent.config.load_yaml", return_value={}):
         sc = get_schedule_config()
 
-    assert sc["hour"] == 8
+    assert sc["hours"] == [8]  # Default to 8:00
     assert sc["minute"] == 0

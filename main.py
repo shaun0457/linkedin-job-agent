@@ -123,21 +123,21 @@ def main() -> None:
     # ── Scheduler ───────────────────────────────────────────────────────
     schedule = get_schedule_config()
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        _run_pipeline,
-        trigger="cron",
-        hour=schedule["hour"],
-        minute=schedule["minute"],
-        id="daily_pipeline",
-    )
+
+    # Add a job for each configured hour
+    for idx, hour in enumerate(schedule["hours"]):
+        scheduler.add_job(
+            _run_pipeline,
+            trigger="cron",
+            hour=hour,
+            minute=schedule["minute"],
+            id=f"daily_pipeline_{idx}",
+        )
 
     async def post_init(application: Application) -> None:
         scheduler.start()
-        logger.info(
-            "Scheduler started — daily run at %02d:%02d",
-            schedule["hour"],
-            schedule["minute"],
-        )
+        times_str = ", ".join(f"{h:02d}:{schedule['minute']:02d}" for h in schedule["hours"])
+        logger.info("Scheduler started — daily runs at: %s", times_str)
 
     app.post_init = post_init
     app.run_polling(allowed_updates=["message", "callback_query"])
