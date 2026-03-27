@@ -133,3 +133,44 @@ def test_set_blacklist_companies_empty_list():
     with patch("agent.config.db.set_config_value") as mock_set:
         set_blacklist_companies([])
     mock_set.assert_called_once_with("blacklist_companies", json.dumps([]))
+
+
+# ── save_yaml ────────────────────────────────────────────────────────────────
+
+
+def test_save_yaml_writes_to_config_path(tmp_path, monkeypatch):
+    import yaml
+    from agent import config as cfg_module
+
+    tmp_yaml = tmp_path / "config.yaml"
+    monkeypatch.setattr(cfg_module, "CONFIG_PATH", tmp_yaml)
+
+    data = {"search": {"keywords": ["test"], "location": "UK"}}
+    cfg_module.save_yaml(data)
+
+    assert tmp_yaml.exists()
+    loaded = yaml.safe_load(tmp_yaml.read_text())
+    assert loaded["search"]["keywords"] == ["test"]
+
+
+# ── get_schedule_config ──────────────────────────────────────────────────────
+
+
+def test_get_schedule_config_returns_hour_and_minute():
+    from agent.config import get_schedule_config
+
+    with patch("agent.config.load_yaml", return_value={"schedule": {"hour": 9, "minute": 30}}):
+        sc = get_schedule_config()
+
+    assert sc["hour"] == 9
+    assert sc["minute"] == 30
+
+
+def test_get_schedule_config_defaults_when_missing():
+    from agent.config import get_schedule_config
+
+    with patch("agent.config.load_yaml", return_value={}):
+        sc = get_schedule_config()
+
+    assert sc["hour"] == 8
+    assert sc["minute"] == 0
