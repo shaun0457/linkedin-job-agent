@@ -1,7 +1,15 @@
 # CLAUDE.md
 
-Semi-automated job search agent: Apify scrape → Resume Matcher tailor → Telegram notify.
-See PRD.md for requirements (What/Why). See BRAINSTORMING.md for design decisions.
+Semi-automated job search agent for a dual-degree engineer (Computational + Mechanical, TU Darmstadt).
+Scrapes LinkedIn jobs → tailors resume via Resume Matcher → notifies user on Telegram for confirmation.
+
+```
+scraper.py (Apify) → deduper.py → improver.py (RM API) → notifier.py (Telegram) → user confirms
+                          ↑                                      ↑
+                     db.py (SQLite)                    config.py (YAML + .env)
+```
+
+**Context:** PRD.md (What/Why) · BRAINSTORMING.md (design decisions) · BACKLOG.md (priorities)
 
 ## Tech Stack
 
