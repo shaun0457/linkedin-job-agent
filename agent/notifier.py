@@ -351,7 +351,7 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     lines = [f"⏳ 待決定職缺（{len(jobs)} 筆）：\n"]
     for j in jobs:
         notified = j["notified_at"][:10] if j.get("notified_at") else "—"
-        lines.append(f"• {j['title']} @ {j['company']}  ({notified})\n  ID: `{j['job_id']}`")
+        lines.append(f"• {j['title']} @ {j['company']}  ({notified})\n  ID: {j['job_id']}")
 
     await update.message.reply_text("\n".join(lines))
 
