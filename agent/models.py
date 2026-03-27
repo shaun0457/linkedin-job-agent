@@ -16,7 +16,9 @@ class Job:
 @dataclass
 class TailoredResult:
     job: Job
-    preview_resume_id: str
+    preview_data: dict          # full ImproveResumeData from RM API
+    rm_job_id: str              # RM's job_id (used for confirm)
+    master_resume_id: str       # master resume used for tailoring
     keywords_added: list[str] = field(default_factory=list)
 
 

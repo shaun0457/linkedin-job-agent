@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS seen_jobs (
     company             TEXT NOT NULL,
     url                 TEXT NOT NULL UNIQUE,
     status              TEXT NOT NULL DEFAULT 'notified',
-    preview_resume_id   TEXT,
+    preview_data        TEXT,           -- JSON blob of full ImproveResumeData
+    rm_job_id           TEXT,           -- RM's internal job_id
+    master_resume_id    TEXT,           -- master resume used for tailoring
     confirmed_resume_id TEXT,
     notified_at         TEXT NOT NULL,
     decided_at          TEXT
@@ -23,6 +25,12 @@ CREATE TABLE IF NOT EXISTS search_config (
     value   TEXT NOT NULL
 );
 """
+
+_MIGRATE_ADD_COLUMNS = [
+    "ALTER TABLE seen_jobs ADD COLUMN preview_data TEXT",
+    "ALTER TABLE seen_jobs ADD COLUMN rm_job_id TEXT",
+    "ALTER TABLE seen_jobs ADD COLUMN master_resume_id TEXT",
+]
 
 
 @contextmanager
@@ -40,6 +48,12 @@ def _conn():
 def init_db() -> None:
     with _conn() as con:
         con.executescript(SCHEMA)
+        # migrate existing DBs that have the old schema
+        for stmt in _MIGRATE_ADD_COLUMNS:
+            try:
+                con.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 # ── seen_jobs ──────────────────────────────────────────────────────────────
@@ -58,24 +72,46 @@ def insert_job(
     title: str,
     company: str,
     url: str,
-    preview_resume_id: str,
+    preview_data: dict,
+    rm_job_id: str,
+    master_resume_id: str,
     notified_at: str,
 ) -> None:
     with _conn() as con:
         con.execute(
             """INSERT OR IGNORE INTO seen_jobs
-               (job_id, title, company, url, status, preview_resume_id, notified_at)
-               VALUES (?, ?, ?, ?, 'notified', ?, ?)""",
-            (job_id, title, company, url, preview_resume_id, notified_at),
+               (job_id, title, company, url, status,
+                preview_data, rm_job_id, master_resume_id, notified_at)
+               VALUES (?, ?, ?, ?, 'notified', ?, ?, ?, ?)""",
+            (
+                job_id, title, company, url,
+                json.dumps(preview_data),
+                rm_job_id,
+                master_resume_id,
+                notified_at,
+            ),
         )
 
 
-def get_preview_resume_id(job_id: str) -> str | None:
+def get_preview_data(job_id: str) -> dict | None:
+    """Return full preview_data dict, or None if not found / already cleared."""
     with _conn() as con:
         row = con.execute(
-            "SELECT preview_resume_id FROM seen_jobs WHERE job_id = ?", (job_id,)
+            "SELECT preview_data FROM seen_jobs WHERE job_id = ?", (job_id,)
         ).fetchone()
-        return row["preview_resume_id"] if row else None
+        if row and row["preview_data"]:
+            return json.loads(row["preview_data"])
+        return None
+
+
+def get_job_meta(job_id: str) -> dict | None:
+    """Return rm_job_id and master_resume_id for a job."""
+    with _conn() as con:
+        row = con.execute(
+            "SELECT rm_job_id, master_resume_id FROM seen_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def confirm_job(job_id: str, confirmed_resume_id: str, decided_at: str) -> None:
@@ -92,7 +128,7 @@ def skip_job(job_id: str, decided_at: str) -> None:
     with _conn() as con:
         con.execute(
             """UPDATE seen_jobs
-               SET status = 'skipped', preview_resume_id = NULL, decided_at = ?
+               SET status = 'skipped', preview_data = NULL, decided_at = ?
                WHERE job_id = ?""",
             (decided_at, job_id),
         )

@@ -29,63 +29,40 @@ def test_is_seen_returns_false_for_unknown_job():
     assert not db_module.is_seen("unknown-id", "https://example.com/unknown")
 
 
-def test_insert_job_and_is_seen_by_job_id():
+def _insert(job_id: str, title: str = "Engineer", company: str = "Acme", url: str = None) -> None:
     db_module.insert_job(
-        job_id="job-1",
-        title="ML Engineer",
-        company="DeepMind",
-        url="https://example.com/job-1",
-        preview_resume_id="preview-abc",
+        job_id=job_id,
+        title=title,
+        company=company,
+        url=url or f"https://example.com/{job_id}",
+        preview_data={"job_id": "rm-1", "resume_preview": {}, "improvements": []},
+        rm_job_id="rm-1",
+        master_resume_id="master-1",
         notified_at=_now(),
     )
+
+
+def test_insert_job_and_is_seen_by_job_id():
+    _insert("job-1", title="ML Engineer", company="DeepMind")
     assert db_module.is_seen("job-1", "https://other.com")
 
 
 def test_insert_job_and_is_seen_by_url():
-    db_module.insert_job(
-        job_id="job-2",
-        title="Data Scientist",
-        company="Google",
-        url="https://example.com/job-2",
-        preview_resume_id="preview-def",
-        notified_at=_now(),
-    )
+    _insert("job-2", title="Data Scientist", company="Google")
     assert db_module.is_seen("totally-different-id", "https://example.com/job-2")
 
 
 def test_insert_job_duplicate_is_ignored():
-    now = _now()
-    db_module.insert_job(
-        job_id="job-3",
-        title="AI Engineer",
-        company="OpenAI",
-        url="https://example.com/job-3",
-        preview_resume_id="preview-ghi",
-        notified_at=now,
-    )
+    _insert("job-3", title="AI Engineer", company="OpenAI")
     # Second insert should not raise (INSERT OR IGNORE)
-    db_module.insert_job(
-        job_id="job-3",
-        title="AI Engineer",
-        company="OpenAI",
-        url="https://example.com/job-3",
-        preview_resume_id="preview-ghi",
-        notified_at=now,
-    )
+    _insert("job-3", title="AI Engineer", company="OpenAI")
     stats = db_module.get_stats(since="2000-01-01T00:00:00")
     assert stats.get("notified", 0) == 1
 
 
 def test_confirm_job():
     now = _now()
-    db_module.insert_job(
-        job_id="job-4",
-        title="Research Scientist",
-        company="Anthropic",
-        url="https://example.com/job-4",
-        preview_resume_id="preview-jkl",
-        notified_at=now,
-    )
+    _insert("job-4", title="Research Scientist", company="Anthropic")
     db_module.confirm_job("job-4", "confirmed-jkl", now)
     stats = db_module.get_stats(since="2000-01-01T00:00:00")
     assert stats.get("confirmed", 0) == 1
@@ -94,14 +71,7 @@ def test_confirm_job():
 
 def test_skip_job():
     now = _now()
-    db_module.insert_job(
-        job_id="job-5",
-        title="Platform Engineer",
-        company="Stability AI",
-        url="https://example.com/job-5",
-        preview_resume_id="preview-mno",
-        notified_at=now,
-    )
+    _insert("job-5", title="Platform Engineer", company="Stability AI")
     db_module.skip_job("job-5", now)
     stats = db_module.get_stats(since="2000-01-01T00:00:00")
     assert stats.get("skipped", 0) == 1
@@ -109,14 +79,7 @@ def test_skip_job():
 
 
 def test_get_stats_empty_for_future_date():
-    db_module.insert_job(
-        job_id="job-6",
-        title="Engineer",
-        company="Acme",
-        url="https://example.com/job-6",
-        preview_resume_id="preview-pqr",
-        notified_at=_now(),
-    )
+    _insert("job-6")
     stats = db_module.get_stats(since="2099-01-01T00:00:00")
     assert stats == {}
 
