@@ -185,19 +185,28 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00")
-    stats = db.get_stats(since=today)
-    total = sum(stats.values())
-    notified = stats.get("notified", 0)
-    confirmed = stats.get("confirmed", 0)
-    skipped = stats.get("skipped", 0)
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%dT00:00:00")
+    week_ago = (now.replace(hour=0, minute=0, second=0, microsecond=0)
+                - __import__("datetime").timedelta(days=7)).isoformat()
+
+    daily = db.get_stats(since=today)
+    weekly = db.get_stats(since=week_ago)
+
+    def _fmt(stats: dict) -> tuple[int, int, int, int]:
+        total = sum(stats.values())
+        return total, stats.get("notified", 0), stats.get("confirmed", 0), stats.get("skipped", 0)
+
+    d_total, d_notified, d_confirmed, d_skipped = _fmt(daily)
+    w_total, w_notified, w_confirmed, w_skipped = _fmt(weekly)
 
     await update.message.reply_text(
         f"📊 今日統計\n"
-        f"• 發現職缺：{total}\n"
-        f"• 待決定：{notified}\n"
-        f"• 已確認：{confirmed}\n"
-        f"• 已跳過：{skipped}"
+        f"• 發現職缺：{d_total}　　待決定：{d_notified}\n"
+        f"• 已確認：{d_confirmed}　　已跳過：{d_skipped}\n\n"
+        f"📅 本週統計（7天）\n"
+        f"• 發現職缺：{w_total}　　待決定：{w_notified}\n"
+        f"• 已確認：{w_confirmed}　　已跳過：{w_skipped}"
     )
 
 
