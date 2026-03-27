@@ -61,6 +61,14 @@ def set_max_jobs(n: int) -> None:
     db.set_config_value("max_jobs_per_run", json.dumps(n))
 
 
+def set_experience_level(levels: list[str]) -> None:
+    db.set_config_value("experience_level", json.dumps(levels))
+
+
+def set_blacklist_companies(companies: list[str]) -> None:
+    db.set_config_value("blacklist_companies", json.dumps(companies))
+
+
 def get_schedule_config() -> dict:
     raw = load_yaml()
     return raw.get("schedule", {"hour": 8, "minute": 0})
