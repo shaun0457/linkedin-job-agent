@@ -196,3 +196,22 @@ def test_cfg_set_experience_level_exists():
 def test_cfg_set_blacklist_companies_exists():
     import agent.config as cfg
     assert hasattr(cfg, "set_blacklist_companies")
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_blacklist_clear_option():
+    """'/set_blacklist -clear' clears the blacklist and confirms."""
+    from agent.notifier import cmd_set_blacklist
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["-clear"]
+
+    with patch("agent.notifier.cfg.set_blacklist_companies") as mock_set:
+        await cmd_set_blacklist(mock_update, mock_context)
+
+    mock_set.assert_called_once_with([])
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "清空" in text

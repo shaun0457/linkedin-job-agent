@@ -7,18 +7,6 @@ Pick the top unclaimed item, implement with TDD (write tests first → RED → i
 
 ## Priority Queue
 
-### [P5] Resume type selection (computational vs mechanical)
-**Why:** User has two master resumes (`master_computational.md` and `master_mechanical.md`).
-The pipeline currently picks the first master resume found. It should pick the right one.
-**What to do:**
-- Add `RESUME_TYPE` env var (values: `computational` | `mechanical` | `auto`)
-- Add to `Settings` in `config.py`
-- In `run_pipeline`, pass `RESUME_TYPE` to `get_master_resume_id` filter
-- `get_master_resume_id` already fetches list — filter by `name` containing the type
-- Write tests for type selection logic
-
----
-
 ### [P8] Close remaining notifier.py coverage gaps (~88% → 92%)
 **Why:** Lines 28-45 (`build_application`) require full Telegram app setup — skip.
 Lines 288-289, 297-298 are set_location/set_max empty-arg paths already tested elsewhere.
@@ -79,6 +67,12 @@ Lines 327-328 (`cmd_search_config` MarkdownV2 parse_mode check) and 353-355 (exp
 | #15 | P6 weekly stats in /status (today + 7-day rolling, TDD) | 2026-03-27 |
 | #16 | P7 scrape_jobs with mocked ApifyClient (scraper 74% → 100%) | 2026-03-27 |
 | #17 | config.py 100% coverage (save_yaml + get_schedule_config) | 2026-03-27 |
+
+**Note:** P5 (Resume type selection) was removed on 2026-03-27.
+**Reason:** The two files `master_computational.md` and `master_mechaniacl.md` are German university transcripts (Leistungsspiegel), not two separate resumes.
+The user already has one combined main resume (`C:\Users\chengting\projects\resume\resume.md`) that reflects the dual degree.
+The Resume Matcher agent architecture is correct — it takes one master resume and tailors it per job opening.
+Focus is now on: (1) ensuring the right resume is uploaded to RM as master, (2) enriching it with more details, and (3) continuing with P8-P11 coverage/feature improvements.
 
 **Current state (2026-03-27):** 144 tests, 91% coverage, all green.
 

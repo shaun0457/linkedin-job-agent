@@ -80,3 +80,20 @@ async def test_set_experience_level_mixed_valid_invalid_warns():
     levels = mock_set.call_args[0][0]
     assert "MID_SENIOR_LEVEL" in levels
     assert "MADE_UP_LEVEL" in levels
+
+
+@pytest.mark.asyncio
+async def test_set_experience_level_empty_after_split():
+    """Input of only commas/spaces yields warning, no config update."""
+    from agent.notifier import cmd_set_experience_level
+
+    update = _mock_update()
+    context = MagicMock()
+    context.args = [" ", ",", " ", ",", " "]
+
+    with patch("agent.notifier.cfg.set_experience_level") as mock_set:
+        await cmd_set_experience_level(update, context)
+
+    mock_set.assert_not_called()
+    text = update.message.reply_text.call_args.args[0]
+    assert "至少一個" in text

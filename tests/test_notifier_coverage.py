@@ -365,6 +365,40 @@ async def test_cmd_set_keywords_no_args_shows_usage():
 
 
 @pytest.mark.asyncio
+async def test_cmd_set_keywords_empty_after_split():
+    """Input of only commas/spaces yields warning, no config update."""
+    from agent.notifier import cmd_set_keywords
+
+    update = _mock_update()
+    context = MagicMock()
+    context.args = [" ", ",", " ", ",", " "]
+
+    with patch("agent.notifier.cfg.set_keywords") as mock_set:
+        await cmd_set_keywords(update, context)
+
+    mock_set.assert_not_called()
+    text = update.message.reply_text.call_args.args[0]
+    assert "至少一個" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_location_no_args():
+    """No args shows usage, does not update config."""
+    from agent.notifier import cmd_set_location
+
+    update = _mock_update()
+    context = MagicMock()
+    context.args = []
+
+    with patch("agent.notifier.cfg.set_location") as mock_set:
+        await cmd_set_location(update, context)
+
+    mock_set.assert_not_called()
+    text = update.message.reply_text.call_args.args[0]
+    assert "用法" in text
+
+
+@pytest.mark.asyncio
 async def test_cmd_set_location_updates():
     from agent.notifier import cmd_set_location
 
