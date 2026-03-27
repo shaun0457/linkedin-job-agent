@@ -1,9 +1,17 @@
 """Tests for agent/config.py."""
-from unittest.mock import patch
+import json
+from unittest.mock import patch, call
 
 import pytest
 
-from agent.config import get_search_config
+from agent.config import (
+    get_search_config,
+    set_keywords,
+    set_location,
+    set_max_jobs,
+    set_experience_level,
+    set_blacklist_companies,
+)
 from agent.models import SearchConfig
 
 
@@ -82,3 +90,46 @@ def test_get_search_config_full_override():
     assert config.experience_level == ["SENIOR_LEVEL"]
     assert config.blacklist_companies == ["Spam Inc"]
     assert config.max_jobs_per_run == 15
+
+
+# ── setter functions ──────────────────────────────────────────────────────────
+
+
+def test_set_keywords_stores_json():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_keywords(["AI Engineer", "ML Engineer"])
+    mock_set.assert_called_once_with("keywords", json.dumps(["AI Engineer", "ML Engineer"]))
+
+
+def test_set_location_stores_json():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_location("Berlin, Germany")
+    mock_set.assert_called_once_with("location", json.dumps("Berlin, Germany"))
+
+
+def test_set_max_jobs_stores_json():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_max_jobs(15)
+    mock_set.assert_called_once_with("max_jobs_per_run", json.dumps(15))
+
+
+def test_set_experience_level_stores_json():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_experience_level(["MID_SENIOR_LEVEL", "ENTRY_LEVEL"])
+    mock_set.assert_called_once_with(
+        "experience_level", json.dumps(["MID_SENIOR_LEVEL", "ENTRY_LEVEL"])
+    )
+
+
+def test_set_blacklist_companies_stores_json():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_blacklist_companies(["EvilCorp", "SpamInc"])
+    mock_set.assert_called_once_with(
+        "blacklist_companies", json.dumps(["EvilCorp", "SpamInc"])
+    )
+
+
+def test_set_blacklist_companies_empty_list():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_blacklist_companies([])
+    mock_set.assert_called_once_with("blacklist_companies", json.dumps([]))
