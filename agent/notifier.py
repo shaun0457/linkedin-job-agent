@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -31,6 +32,7 @@ def build_application(settings: cfg.Settings) -> Application:
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("retry", cmd_retry))
     app.add_handler(CommandHandler("config", cmd_config))
+    app.add_handler(CommandHandler("search_config", cmd_search_config))
     app.add_handler(CommandHandler("set_keywords", cmd_set_keywords))
     app.add_handler(CommandHandler("set_location", cmd_set_location))
     app.add_handler(CommandHandler("set_max", cmd_set_max))
@@ -83,6 +85,20 @@ async def notify_error(app: Application, chat_id: str, message: str) -> None:
     await app.bot.send_message(chat_id=chat_id, text=f"⚠️ {message}")
 
 
+async def notify_run_summary(
+    app: Application, chat_id: str, found: int, tailored: int, failed: int
+) -> None:
+    """Send a MarkdownV2 run-complete summary if any jobs were found."""
+    if found == 0:
+        return
+    text = (
+        f"✅ Run complete: {_esc(str(found))} new jobs found, "
+        f"{_esc(str(tailored))} tailored, "
+        f"{_esc(str(failed))} failed"
+    )
+    await app.bot.send_message(chat_id=chat_id, text=text, parse_mode="MarkdownV2")
+
+
 # ── callback handler ───────────────────────────────────────────────────────
 
 
@@ -103,13 +119,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def _handle_confirm(query, settings: cfg.Settings, job_id: str) -> None:
-    preview_id = db.get_preview_resume_id(job_id)
-    if not preview_id:
+    payload_json = db.get_confirm_payload(job_id)
+    if not payload_json:
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text("⚠️ 找不到 preview resume，請用 /retry " + job_id)
+        await query.message.reply_text("⚠️ 找不到 confirm payload，請用 /retry " + job_id)
         return
 
-    confirmed_id = await improver.confirm_resume(settings.resume_matcher_url, preview_id)
+    confirmed_id = await improver.confirm_resume(settings.resume_matcher_url, json.loads(payload_json))
     if not confirmed_id:
         await query.message.reply_text(
             f"⚠️ 確認失敗，請稍後再試 (/retry {job_id})"
@@ -193,12 +209,12 @@ async def cmd_retry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     job_id = context.args[0]
     settings: cfg.Settings = context.bot_data["settings"]
-    preview_id = db.get_preview_resume_id(job_id)
-    if not preview_id:
+    payload_json = db.get_confirm_payload(job_id)
+    if not payload_json:
         await update.message.reply_text(f"找不到 job_id: {job_id}")
         return
 
-    confirmed_id = await improver.confirm_resume(settings.resume_matcher_url, preview_id)
+    confirmed_id = await improver.confirm_resume(settings.resume_matcher_url, json.loads(payload_json))
     if not confirmed_id:
         await update.message.reply_text("⚠️ 重試失敗，請稍後再試")
         return
@@ -223,6 +239,24 @@ async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "  `/set_keywords` AI Engineer, ML Engineer\n"
         "  `/set_location` Berlin, Germany\n"
         "  `/set_max` 15"
+    )
+    await update.message.reply_text(text, parse_mode="MarkdownV2")
+
+
+async def cmd_search_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    sc = cfg.get_search_config()
+    kw_text = _esc(", ".join(sc.keywords))
+    loc_text = _esc(sc.location)
+    max_text = str(sc.max_jobs_per_run)
+    exp_text = _esc(", ".join(sc.experience_level))
+    bl_text = _esc(", ".join(sc.blacklist_companies) if sc.blacklist_companies else "—")
+    text = (
+        "⚙️ 完整搜尋設定\n\n"
+        f"🔍 關鍵字：{kw_text}\n"
+        f"📍 地點：{loc_text}\n"
+        f"📊 最多職缺數：{max_text}\n"
+        f"🎓 經驗等級：{exp_text}\n"
+        f"🚫 排除公司：{bl_text}"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
 
@@ -270,6 +304,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/list \\- List recently confirmed jobs with PDF links\n"
         "/retry `<job_id>` \\- Retry confirming a resume for a job\n"
         "/config \\- Show current search configuration\n"
+        "/search\\_config \\- Show full config incl\\. experience level \\& blacklist\n"
         "/set\\_keywords `<kw1, kw2>` \\- Update search keywords\n"
         "/set\\_location `<location>` \\- Update search location\n"
         "/set\\_max `<n>` \\- Set max jobs per run\n"

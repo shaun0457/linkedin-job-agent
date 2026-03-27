@@ -50,6 +50,7 @@ def test_tailored_result_default_keywords():
     assert result.job is job
     assert result.preview_resume_id == "preview-abc"
     assert result.keywords_added == []
+    assert result.confirm_payload == {}
 
 
 def test_tailored_result_with_keywords():
@@ -85,6 +86,21 @@ def test_tailored_result_keywords_are_independent():
     r2 = TailoredResult(job=job, preview_resume_id="p2")
     r1.keywords_added.append("keyword")
     assert r2.keywords_added == []
+
+
+def test_tailored_result_with_confirm_payload():
+    job = Job(
+        job_id="cp1",
+        title="Engineer",
+        company="Acme",
+        location="Remote",
+        url="https://example.com/cp1",
+        description="Engineering role.",
+    )
+    payload = {"resume_id": "master-1", "job_id": "rm-job-1", "improved_data": {}, "improvements": []}
+    result = TailoredResult(job=job, preview_resume_id="req-abc", confirm_payload=payload)
+    assert result.confirm_payload["resume_id"] == "master-1"
+    assert result.confirm_payload["job_id"] == "rm-job-1"
 
 
 def test_search_config_fields():

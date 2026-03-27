@@ -7,8 +7,6 @@ from agent.models import Job, TailoredResult
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = 3      # seconds between status checks
-POLL_TIMEOUT = 60      # total seconds before giving up
 MAX_RETRIES = 3
 RETRY_BACKOFF = 2.0    # seconds
 
@@ -16,35 +14,54 @@ RETRY_BACKOFF = 2.0    # seconds
 async def tailor_resume(
     base_url: str, master_resume_id: str, job: Job
 ) -> TailoredResult | None:
-    """Upload JD to Resume Matcher, run improve/preview, return TailoredResult or None."""
-    async with httpx.AsyncClient(base_url=base_url, timeout=30) as client:
+    """Upload JD to Resume Matcher, run improve/preview, return TailoredResult or None.
+
+    The preview endpoint is synchronous (LLM call returns full result).  The
+    confirm_payload stored on the result contains everything needed to call
+    POST /api/v1/resumes/improve/confirm later when the user approves.
+    """
+    async with httpx.AsyncClient(base_url=base_url, timeout=300) as client:
         rm_job_id = await _upload_job(client, job)
         if rm_job_id is None:
             return None
 
-        preview_id = await _improve_preview(client, master_resume_id, rm_job_id)
-        if preview_id is None:
+        preview_data = await _improve_preview(client, master_resume_id, rm_job_id)
+        if preview_data is None:
             return None
 
-        keywords = await _poll_until_done(client, preview_id)
-        if keywords is None:
-            return None
+        improved_data = preview_data.get("resume_preview")
+        improvements = preview_data.get("improvements", [])
+        request_id = preview_data.get("request_id", rm_job_id)
 
-        return TailoredResult(job=job, preview_resume_id=preview_id, keywords_added=keywords)
+        confirm_payload = {
+            "resume_id": master_resume_id,
+            "job_id": rm_job_id,
+            "improved_data": improved_data,
+            "improvements": improvements,
+        }
+
+        return TailoredResult(
+            job=job,
+            preview_resume_id=request_id,
+            keywords_added=[],
+            confirm_payload=confirm_payload,
+        )
 
 
-async def confirm_resume(base_url: str, preview_resume_id: str) -> str | None:
-    """Confirm a previewed resume and return the confirmed_resume_id."""
+async def confirm_resume(base_url: str, confirm_payload: dict) -> str | None:
+    """Confirm a previewed resume and return the confirmed resume_id.
+
+    confirm_payload must contain: resume_id, job_id, improved_data, improvements.
+    """
     async with httpx.AsyncClient(base_url=base_url, timeout=30) as client:
         for attempt in range(MAX_RETRIES):
             try:
                 resp = await client.post(
-                    f"/api/v1/resumes/improve/confirm",
-                    json={"resume_id": preview_resume_id},
+                    "/api/v1/resumes/improve/confirm",
+                    json=confirm_payload,
                 )
                 resp.raise_for_status()
-                data = resp.json()
-                return data.get("id") or data.get("resume_id")
+                return resp.json()["data"]["resume_id"]
             except httpx.HTTPError as e:
                 logger.warning("Confirm attempt %d failed: %s", attempt + 1, e)
                 if attempt < MAX_RETRIES - 1:
@@ -53,12 +70,7 @@ async def confirm_resume(base_url: str, preview_resume_id: str) -> str | None:
 
 
 async def delete_preview(base_url: str, preview_resume_id: str) -> None:
-    """Best-effort delete of a preview resume (cleanup on skip)."""
-    try:
-        async with httpx.AsyncClient(base_url=base_url, timeout=10) as client:
-            await client.delete(f"/api/v1/resumes/{preview_resume_id}")
-    except Exception as e:
-        logger.warning("Failed to delete preview %s: %s", preview_resume_id, e)
+    """No-op: previews are not persisted server-side in this API version."""
 
 
 async def get_master_resume_id(base_url: str) -> str | None:
@@ -67,10 +79,10 @@ async def get_master_resume_id(base_url: str) -> str | None:
         try:
             resp = await client.get("/api/v1/resumes/list", params={"include_master": "true"})
             resp.raise_for_status()
-            resumes = resp.json()
+            resumes = resp.json().get("data", [])
             masters = [r for r in resumes if r.get("is_master")]
             if masters:
-                return masters[0]["id"]
+                return masters[0]["resume_id"]
         except httpx.HTTPError as e:
             logger.error("Failed to fetch master resume: %s", e)
     return None
@@ -80,13 +92,15 @@ async def get_master_resume_id(base_url: str) -> str | None:
 
 
 async def _upload_job(client: httpx.AsyncClient, job: Job) -> str | None:
+    """Upload a job description; return the job_id string or None on failure."""
     try:
         resp = await client.post(
             "/api/v1/jobs/upload",
-            json={"content": job.description, "title": job.title},
+            json={"job_descriptions": [job.description]},
         )
         resp.raise_for_status()
-        return resp.json()["id"]
+        job_ids = resp.json().get("job_id", [])
+        return job_ids[0] if job_ids else None
     except httpx.HTTPError as e:
         logger.error("Job upload failed for %s: %s", job.job_id, e)
         return None
@@ -94,46 +108,15 @@ async def _upload_job(client: httpx.AsyncClient, job: Job) -> str | None:
 
 async def _improve_preview(
     client: httpx.AsyncClient, master_resume_id: str, rm_job_id: str
-) -> str | None:
+) -> dict | None:
+    """Call improve/preview (synchronous LLM call) and return the data payload dict."""
     try:
         resp = await client.post(
             "/api/v1/resumes/improve/preview",
             json={"resume_id": master_resume_id, "job_id": rm_job_id},
         )
         resp.raise_for_status()
-        return resp.json()["id"]
+        return resp.json().get("data")
     except httpx.HTTPError as e:
         logger.error("Improve preview failed: %s", e)
         return None
-
-
-async def _poll_until_done(
-    client: httpx.AsyncClient, resume_id: str
-) -> list[str] | None:
-    """Poll processing_status until completed/failed. Returns keywords_added or None."""
-    for _ in range(POLL_TIMEOUT // POLL_INTERVAL):
-        await asyncio.sleep(POLL_INTERVAL)
-        try:
-            resp = await client.get(f"/api/v1/resumes/{resume_id}")
-            resp.raise_for_status()
-            data = resp.json()
-            status = data.get("processing_status")
-
-            if status == "completed":
-                improvements = data.get("improvements", [])
-                keywords = [
-                    imp.get("keyword") or imp.get("text", "")
-                    for imp in improvements
-                    if imp.get("type") == "keyword_added"
-                ]
-                return keywords
-
-            if status == "failed":
-                logger.error("Resume processing failed for %s", resume_id)
-                return None
-
-        except httpx.HTTPError as e:
-            logger.warning("Poll error for %s: %s", resume_id, e)
-
-    logger.error("Poll timeout for resume %s", resume_id)
-    return None

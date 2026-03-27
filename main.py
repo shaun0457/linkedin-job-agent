@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -63,6 +64,7 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
 
     # ── 4. Tailor + notify each job ─────────────────────────────────────
     failed = 0
+    tailored = 0
     for job in new_jobs:
         result = await improver.tailor_resume(
             settings.resume_matcher_url, master_id, job
@@ -73,6 +75,7 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
             failed += 1
             continue
 
+        tailored += 1
         now = datetime.now(timezone.utc).isoformat()
         db.insert_job(
             job_id=job.job_id,
@@ -81,6 +84,7 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
             url=job.url,
             preview_resume_id=result.preview_resume_id,
             notified_at=now,
+            confirm_payload=json.dumps(result.confirm_payload),
         )
 
         await notifier.notify_job(app, settings.telegram_chat_id, result)
@@ -91,6 +95,11 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
             settings.telegram_chat_id,
             f"{failed} 個職缺處理失敗，已略過。",
         )
+
+    await notifier.notify_run_summary(
+        app, settings.telegram_chat_id,
+        found=len(new_jobs), tailored=tailored, failed=failed,
+    )
 
     logger.info("Pipeline complete")
 

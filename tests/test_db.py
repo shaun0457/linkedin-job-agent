@@ -134,3 +134,35 @@ def test_set_config_value_overwrite():
 
 def test_get_config_value_missing_key():
     assert db_module.get_config_value("nonexistent_key") is None
+
+
+def test_insert_job_with_confirm_payload():
+    import json
+    payload = json.dumps({"resume_id": "master-1", "job_id": "rm-1"})
+    db_module.insert_job(
+        job_id="job-cp",
+        title="Engineer",
+        company="Acme",
+        url="https://example.com/job-cp",
+        preview_resume_id="preview-cp",
+        notified_at=_now(),
+        confirm_payload=payload,
+    )
+    result = db_module.get_confirm_payload("job-cp")
+    assert result == payload
+
+
+def test_get_confirm_payload_missing():
+    assert db_module.get_confirm_payload("nonexistent-job") is None
+
+
+def test_insert_job_without_confirm_payload_defaults_to_none():
+    db_module.insert_job(
+        job_id="job-no-payload",
+        title="Engineer",
+        company="Acme",
+        url="https://example.com/job-no-payload",
+        preview_resume_id="preview-np",
+        notified_at=_now(),
+    )
+    assert db_module.get_confirm_payload("job-no-payload") is None

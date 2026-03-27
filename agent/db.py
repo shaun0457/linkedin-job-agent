@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS seen_jobs (
     preview_resume_id   TEXT,
     confirmed_resume_id TEXT,
     notified_at         TEXT NOT NULL,
-    decided_at          TEXT
+    decided_at          TEXT,
+    confirm_payload     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS search_config (
@@ -40,6 +41,10 @@ def _conn():
 def init_db() -> None:
     with _conn() as con:
         con.executescript(SCHEMA)
+        # Migration: add confirm_payload column to existing databases
+        columns = {row[1] for row in con.execute("PRAGMA table_info(seen_jobs)").fetchall()}
+        if "confirm_payload" not in columns:
+            con.execute("ALTER TABLE seen_jobs ADD COLUMN confirm_payload TEXT")
 
 
 # ── seen_jobs ──────────────────────────────────────────────────────────────
@@ -60,13 +65,14 @@ def insert_job(
     url: str,
     preview_resume_id: str,
     notified_at: str,
+    confirm_payload: str | None = None,
 ) -> None:
     with _conn() as con:
         con.execute(
             """INSERT OR IGNORE INTO seen_jobs
-               (job_id, title, company, url, status, preview_resume_id, notified_at)
-               VALUES (?, ?, ?, ?, 'notified', ?, ?)""",
-            (job_id, title, company, url, preview_resume_id, notified_at),
+               (job_id, title, company, url, status, preview_resume_id, notified_at, confirm_payload)
+               VALUES (?, ?, ?, ?, 'notified', ?, ?, ?)""",
+            (job_id, title, company, url, preview_resume_id, notified_at, confirm_payload),
         )
 
 
@@ -76,6 +82,14 @@ def get_preview_resume_id(job_id: str) -> str | None:
             "SELECT preview_resume_id FROM seen_jobs WHERE job_id = ?", (job_id,)
         ).fetchone()
         return row["preview_resume_id"] if row else None
+
+
+def get_confirm_payload(job_id: str) -> str | None:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT confirm_payload FROM seen_jobs WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        return row["confirm_payload"] if row else None
 
 
 def confirm_job(job_id: str, confirmed_resume_id: str, decided_at: str) -> None:

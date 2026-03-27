@@ -18,6 +18,7 @@ class TailoredResult:
     job: Job
     preview_resume_id: str
     keywords_added: list[str] = field(default_factory=list)
+    confirm_payload: dict = field(default_factory=dict)
 
 
 @dataclass
