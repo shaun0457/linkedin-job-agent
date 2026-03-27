@@ -16,6 +16,7 @@ from telegram.ext import (
 from agent import config as cfg
 from agent import db
 from agent import improver
+from agent.models import VALID_EXPERIENCE_LEVELS
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +319,15 @@ async def cmd_set_experience_level(
         return
 
     cfg.set_experience_level(levels)
-    await update.message.reply_text(f"✅ 經驗等級已更新：{', '.join(levels)}")
+    invalid = [lv for lv in levels if lv not in VALID_EXPERIENCE_LEVELS]
+    if invalid:
+        await update.message.reply_text(
+            f"✅ 經驗等級已更新：{', '.join(levels)}\n"
+            f"⚠️ 無效的等級（將被 LinkedIn 忽略）：{', '.join(invalid)}\n"
+            f"有效值：{', '.join(sorted(VALID_EXPERIENCE_LEVELS))}"
+        )
+    else:
+        await update.message.reply_text(f"✅ 經驗等級已更新：{', '.join(levels)}")
 
 
 async def cmd_set_blacklist(

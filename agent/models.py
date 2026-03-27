@@ -1,5 +1,14 @@
 from dataclasses import dataclass, field
 
+VALID_EXPERIENCE_LEVELS: frozenset[str] = frozenset({
+    "INTERNSHIP",
+    "ENTRY_LEVEL",
+    "ASSOCIATE",
+    "MID_SENIOR_LEVEL",
+    "DIRECTOR",
+    "EXECUTIVE",
+})
+
 
 @dataclass
 class Job:
