@@ -86,7 +86,14 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
             notified_at=now,
         )
 
-        await notifier.notify_job(app, settings.telegram_chat_id, result)
+        if settings.auto_confirm:
+            await improver.confirm_resume(
+                settings.resume_matcher_url,
+                master_resume_id=result.master_resume_id,
+                preview_data=result.preview_data,
+            )
+        else:
+            await notifier.notify_job(app, settings.telegram_chat_id, result)
         tailored += 1
 
     await notifier.notify_run_summary(

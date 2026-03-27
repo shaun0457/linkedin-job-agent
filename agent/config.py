@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     telegram_chat_id: str
     resume_matcher_url: str = "http://localhost:8000"
+    auto_confirm: bool = False
 
 
 def load_yaml() -> dict:

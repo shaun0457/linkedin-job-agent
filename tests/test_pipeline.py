@@ -37,6 +37,7 @@ def mock_settings():
     s.apify_token = "mock"
     s.telegram_chat_id = "999"
     s.resume_matcher_url = "http://rm:8000"
+    s.auto_confirm = False
     return s
 
 
