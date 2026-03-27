@@ -1,6 +1,8 @@
 """TDD tests for agent/scraper.py."""
+from unittest.mock import MagicMock, patch
+
 from agent.models import Job, SearchConfig
-from agent.scraper import _parse_item, scrape_jobs_mock, _apply_blacklist
+from agent.scraper import _parse_item, scrape_jobs_mock, _apply_blacklist, scrape_jobs
 
 
 def _make_config(**kwargs) -> SearchConfig:
@@ -193,3 +195,83 @@ def test_apply_blacklist_returns_new_list():
     jobs = [_make_simple_job("1", "EvilCorp")]
     result = _apply_blacklist(jobs, ["EvilCorp"])
     assert result is not jobs
+
+
+# ── scrape_jobs (ApifyClient mocked) ─────────────────────────────────────────
+
+
+def _mock_apify(items: list[dict]):
+    """Return a mock ApifyClient that yields `items` from a dataset."""
+    mock_run = {"defaultDatasetId": "dataset-abc"}
+    mock_dataset = MagicMock()
+    mock_dataset.iterate_items.return_value = iter(items)
+    mock_actor = MagicMock()
+    mock_actor.call.return_value = mock_run
+    mock_client = MagicMock()
+    mock_client.actor.return_value = mock_actor
+    mock_client.dataset.return_value = mock_dataset
+    return mock_client
+
+
+_VALID_ITEM = {
+    "id": "live-1",
+    "title": "AI Engineer",
+    "companyName": "TechCorp",
+    "location": "Berlin, Germany",
+    "jobUrl": "https://linkedin.com/jobs/view/live-1/",
+    "description": "Build AI systems",
+}
+
+
+def test_scrape_jobs_returns_parsed_jobs():
+    config = _make_config()
+    mock_client = _mock_apify([_VALID_ITEM])
+
+    with patch("agent.scraper.ApifyClient", return_value=mock_client):
+        jobs = scrape_jobs("fake-token", config)
+
+    assert len(jobs) == 1
+    assert jobs[0].job_id == "live-1"
+    assert jobs[0].title == "AI Engineer"
+    assert jobs[0].company == "TechCorp"
+
+
+def test_scrape_jobs_sends_correct_run_input():
+    config = _make_config(
+        keywords=["ML Engineer"], location="Netherlands",
+        experience_level=["MID_SENIOR_LEVEL"], max_jobs_per_run=5
+    )
+    mock_client = _mock_apify([])
+
+    with patch("agent.scraper.ApifyClient", return_value=mock_client):
+        scrape_jobs("token", config)
+
+    call_kwargs = mock_client.actor.return_value.call.call_args.kwargs
+    run_input = call_kwargs["run_input"]
+    assert run_input["searchQueries"] == ["ML Engineer"]
+    assert run_input["location"] == "Netherlands"
+    assert run_input["experienceLevel"] == ["MID_SENIOR_LEVEL"]
+    assert run_input["maxResults"] == 5
+
+
+def test_scrape_jobs_applies_blacklist():
+    config = _make_config(blacklist_companies=["TechCorp"])
+    mock_client = _mock_apify([_VALID_ITEM])  # TechCorp item
+
+    with patch("agent.scraper.ApifyClient", return_value=mock_client):
+        jobs = scrape_jobs("token", config)
+
+    assert jobs == []
+
+
+def test_scrape_jobs_skips_invalid_items():
+    """Items missing required fields are silently skipped."""
+    bad_item = {"id": "bad", "companyName": "Acme"}  # no title, no url
+    config = _make_config()
+    mock_client = _mock_apify([bad_item, _VALID_ITEM])
+
+    with patch("agent.scraper.ApifyClient", return_value=mock_client):
+        jobs = scrape_jobs("token", config)
+
+    assert len(jobs) == 1
+    assert jobs[0].job_id == "live-1"
