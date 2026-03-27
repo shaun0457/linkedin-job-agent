@@ -1,6 +1,6 @@
 """TDD tests for agent/scraper.py."""
 from agent.models import Job, SearchConfig
-from agent.scraper import _parse_item, scrape_jobs_mock
+from agent.scraper import _parse_item, scrape_jobs_mock, _apply_blacklist
 
 
 def _make_config(**kwargs) -> SearchConfig:
@@ -143,3 +143,53 @@ def test_scrape_jobs_mock_job_ids_are_unique():
     jobs = scrape_jobs_mock(config)
     ids = [j.job_id for j in jobs]
     assert len(ids) == len(set(ids))
+
+
+# ── _apply_blacklist ──────────────────────────────────────────────────────────
+
+
+def _make_simple_job(job_id: str, company: str) -> Job:
+    return Job(
+        job_id=job_id,
+        title="Engineer",
+        company=company,
+        location="Anywhere",
+        url=f"https://example.com/{job_id}",
+        description="desc",
+    )
+
+
+def test_apply_blacklist_removes_blacklisted_company():
+    jobs = [
+        _make_simple_job("1", "EvilCorp"),
+        _make_simple_job("2", "GoodCorp"),
+    ]
+    result = _apply_blacklist(jobs, ["EvilCorp"])
+    assert len(result) == 1
+    assert result[0].company == "GoodCorp"
+
+
+def test_apply_blacklist_case_insensitive():
+    jobs = [_make_simple_job("1", "evilcorp")]
+    result = _apply_blacklist(jobs, ["EvilCorp"])
+    assert result == []
+
+
+def test_apply_blacklist_partial_name_match():
+    """Blacklist entry is a substring of company name."""
+    jobs = [_make_simple_job("1", "EvilCorp Inc.")]
+    result = _apply_blacklist(jobs, ["evilcorp"])
+    assert result == []
+
+
+def test_apply_blacklist_empty_blacklist_passes_all():
+    jobs = [_make_simple_job("1", "AnyCompany"), _make_simple_job("2", "OtherCo")]
+    result = _apply_blacklist(jobs, [])
+    assert len(result) == 2
+
+
+def test_apply_blacklist_returns_new_list():
+    """Verify the function returns a new list (no mutation)."""
+    jobs = [_make_simple_job("1", "EvilCorp")]
+    result = _apply_blacklist(jobs, ["EvilCorp"])
+    assert result is not jobs

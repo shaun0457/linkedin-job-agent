@@ -31,15 +31,9 @@ def scrape_jobs(token: str, config: SearchConfig) -> list[Job]:
     run = client.actor(ACTOR_ID).call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
 
-    jobs: list[Job] = []
-    for item in items:
-        job = _parse_item(item)
-        if job is None:
-            continue
-        if any(bl.lower() in job.company.lower() for bl in config.blacklist_companies):
-            logger.debug("Skipping blacklisted company: %s", job.company)
-            continue
-        jobs.append(job)
+    raw_jobs = [_parse_item(item) for item in items]
+    parsed = [j for j in raw_jobs if j is not None]
+    jobs = _apply_blacklist(parsed, config.blacklist_companies)
 
     logger.info("Scrape complete: %d jobs returned", len(jobs))
     return jobs
@@ -96,6 +90,19 @@ def scrape_jobs_mock(config: SearchConfig) -> list[Job]:
             posted_at="2024-01-13",
         ),
     ]
+
+
+def _apply_blacklist(jobs: list[Job], blacklist: list[str]) -> list[Job]:
+    """Return jobs excluding any from blacklisted companies (case-insensitive substring)."""
+    if not blacklist:
+        return list(jobs)
+    result = []
+    for job in jobs:
+        if any(bl.lower() in job.company.lower() for bl in blacklist):
+            logger.debug("Skipping blacklisted company: %s", job.company)
+        else:
+            result.append(job)
+    return result
 
 
 def _parse_item(item: dict) -> Job | None:
