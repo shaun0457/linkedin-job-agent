@@ -36,6 +36,9 @@ def build_application(settings: cfg.Settings) -> Application:
     app.add_handler(CommandHandler("set_max", cmd_set_max))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("search_config", cmd_search_config))
+    app.add_handler(CommandHandler("set_experience_level", cmd_set_experience_level))
+    app.add_handler(CommandHandler("set_blacklist", cmd_set_blacklist))
+    app.add_handler(CommandHandler("pending", cmd_pending))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app
@@ -299,11 +302,66 @@ async def cmd_set_max(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(f"✅ 最多職缺數已更新：{n}")
 
 
+async def cmd_set_experience_level(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "用法：/set_experience_level MID_SENIOR_LEVEL, ENTRY_LEVEL"
+        )
+        return
+
+    raw = " ".join(context.args)
+    levels = [lv.strip() for lv in raw.split(",") if lv.strip()]
+    if not levels:
+        await update.message.reply_text("⚠️ 請提供至少一個經驗等級")
+        return
+
+    cfg.set_experience_level(levels)
+    await update.message.reply_text(f"✅ 經驗等級已更新：{', '.join(levels)}")
+
+
+async def cmd_set_blacklist(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "用法：/set_blacklist EvilCorp, BadInc\n（清空：/set_blacklist -clear）"
+        )
+        return
+
+    raw = " ".join(context.args)
+    if raw.strip() == "-clear":
+        cfg.set_blacklist_companies([])
+        await update.message.reply_text("✅ 排除名單已清空")
+        return
+
+    companies = [c.strip() for c in raw.split(",") if c.strip()]
+    cfg.set_blacklist_companies(companies)
+    await update.message.reply_text(f"✅ 排除公司已更新：{', '.join(companies)}")
+
+
+async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List jobs waiting for confirm/skip."""
+    jobs = db.get_pending_jobs(limit=10)
+    if not jobs:
+        await update.message.reply_text("目前沒有待決定的職缺 👍")
+        return
+
+    lines = [f"⏳ 待決定職缺（{len(jobs)} 筆）：\n"]
+    for j in jobs:
+        notified = j["notified_at"][:10] if j.get("notified_at") else "—"
+        lines.append(f"• {j['title']} @ {j['company']}  ({notified})\n  ID: `{j['job_id']}`")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         "🤖 *Available Commands*\n\n"
         "/run \\- Manually trigger the job search pipeline\n"
         "/status \\- Show today's job statistics\n"
+        "/pending \\- List jobs waiting for confirm/skip\n"
         "/list \\- List recently confirmed jobs with PDF links\n"
         "/retry `<job_id>` \\- Retry confirming a resume for a job\n"
         "/config \\- Show basic search configuration\n"
@@ -311,6 +369,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/set\\_keywords `<kw1, kw2>` \\- Update search keywords\n"
         "/set\\_location `<location>` \\- Update search location\n"
         "/set\\_max `<n>` \\- Set max jobs per run\n"
+        "/set\\_experience\\_level `<level1, level2>` \\- Update experience filter\n"
+        "/set\\_blacklist `<co1, co2>` \\- Update company blacklist\n"
         "/help \\- Show this help message"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")

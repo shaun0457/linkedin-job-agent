@@ -144,6 +144,18 @@ def get_stats(since: str) -> dict[str, int]:
         return {r["status"]: r["n"] for r in rows}
 
 
+def get_pending_jobs(limit: int = 20) -> list[dict]:
+    """Return jobs with status='notified' (awaiting confirm/skip), newest first."""
+    with _conn() as con:
+        rows = con.execute(
+            """SELECT job_id, title, company, notified_at
+               FROM seen_jobs WHERE status = 'notified'
+               ORDER BY notified_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_recent_confirmed(limit: int = 10) -> list[dict]:
     with _conn() as con:
         rows = con.execute(
