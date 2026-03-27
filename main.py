@@ -13,7 +13,7 @@ from agent import improver
 from agent import notifier
 from agent.config import Settings, get_schedule_config, get_search_config
 from agent.deduper import filter_new
-from agent.scraper import scrape_jobs
+from agent.scraper import scrape_jobs, scrape_jobs_mock
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,18 +40,12 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
         return
 
     # ── 2. Scrape ───────────────────────────────────────────────────────
-    if not settings.apify_token:
-        logger.warning("APIFY_TOKEN not set — skipping scrape")
-        await notifier.notify_error(
-            app,
-            settings.telegram_chat_id,
-            "APIFY_TOKEN not configured. Set it in .env to enable auto-scraping.\n"
-            "You can still use Resume Matcher manually.",
-        )
-        return
-
     try:
-        jobs = scrape_jobs(settings.apify_token, search_cfg)
+        if not settings.apify_token or settings.apify_token.startswith("mock"):
+            logger.info("Mock scraper mode active")
+            jobs = scrape_jobs_mock(search_cfg)
+        else:
+            jobs = scrape_jobs(settings.apify_token, search_cfg)
     except Exception as e:
         logger.error("Scraper failed: %s", e)
         await notifier.notify_error(

@@ -34,6 +34,7 @@ def build_application(settings: cfg.Settings) -> Application:
     app.add_handler(CommandHandler("set_keywords", cmd_set_keywords))
     app.add_handler(CommandHandler("set_location", cmd_set_location))
     app.add_handler(CommandHandler("set_max", cmd_set_max))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app
@@ -56,7 +57,7 @@ async def notify_job(
     text = (
         f"🏢 *{_esc(job.company)}* — {_esc(job.title)}\n"
         f"📍 {_esc(job.location or '—')}\n"
-        f"🔗 {job.url}\n\n"
+        f"🔗 [View Job]({_esc_url(job.url)})\n\n"
         f"📄 履歷調整重點：\n"
         f"• 新增關鍵字：{_esc(keywords_text)}\n"
         f"• 共調整 {n_kw} 項關鍵字"
@@ -72,7 +73,7 @@ async def notify_job(
     await app.bot.send_message(
         chat_id=chat_id,
         text=text,
-        parse_mode="Markdown",
+        parse_mode="MarkdownV2",
         reply_markup=keyboard,
         disable_web_page_preview=True,
     )
@@ -134,10 +135,10 @@ async def _handle_skip(query, settings: cfg.Settings, job_id: str) -> None:
     db.skip_job(job_id, now)
 
     original = query.message.text or ""
-    first_line = original.split("\n")[0].replace("*", "")
+    first_line = original.split("\n")[0]
     await query.edit_message_text(
-        text=f"~~{first_line}~~ — 已跳過",
-        parse_mode="Markdown",
+        text=f"~{_esc(first_line)}~ — 已跳過",
+        parse_mode="MarkdownV2",
     )
 
 
@@ -210,17 +211,20 @@ async def cmd_retry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     sc = cfg.get_search_config()
+    kw_text = _esc(", ".join(sc.keywords))
+    loc_text = _esc(sc.location)
+    max_text = str(sc.max_jobs_per_run)
     text = (
-        f"⚙️ 目前搜尋設定\n\n"
-        f"🔍 關鍵字：{', '.join(sc.keywords)}\n"
-        f"📍 地點：{sc.location}\n"
-        f"📊 最多職缺數：{sc.max_jobs_per_run}\n\n"
-        f"修改指令：\n"
-        f"  /set\\_keywords AI Engineer, ML Engineer\n"
-        f"  /set\\_location Berlin, Germany\n"
-        f"  /set\\_max 15"
+        "⚙️ 目前搜尋設定\n\n"
+        f"🔍 關鍵字：{kw_text}\n"
+        f"📍 地點：{loc_text}\n"
+        f"📊 最多職缺數：{max_text}\n\n"
+        "修改指令：\n"
+        "  `/set_keywords` AI Engineer, ML Engineer\n"
+        "  `/set_location` Berlin, Germany\n"
+        "  `/set_max` 15"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="MarkdownV2")
 
 
 async def cmd_set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -258,11 +262,37 @@ async def cmd_set_max(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(f"✅ 最多職缺數已更新：{n}")
 
 
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    text = (
+        "🤖 *Available Commands*\n\n"
+        "/run \\- Manually trigger the job search pipeline\n"
+        "/status \\- Show today's job statistics\n"
+        "/list \\- List recently confirmed jobs with PDF links\n"
+        "/retry `<job_id>` \\- Retry confirming a resume for a job\n"
+        "/config \\- Show current search configuration\n"
+        "/set\\_keywords `<kw1, kw2>` \\- Update search keywords\n"
+        "/set\\_location `<location>` \\- Update search location\n"
+        "/set\\_max `<n>` \\- Set max jobs per run\n"
+        "/help \\- Show this help message"
+    )
+    await update.message.reply_text(text, parse_mode="MarkdownV2")
+
+
 # ── util ───────────────────────────────────────────────────────────────────
 
 
 def _esc(text: str) -> str:
-    """Escape Markdown special characters."""
+    """Escape MarkdownV2 special characters."""
+    # Escape backslash first to avoid double-escaping
+    text = text.replace("\\", "\\\\")
     for ch in r"_*[]()~`>#+-=|{}.!":
         text = text.replace(ch, f"\\{ch}")
     return text
+
+
+def _esc_url(url: str) -> str:
+    """Escape URL for use inside MarkdownV2 inline link parentheses.
+
+    Only ) and \\ need escaping inside the URL part of [text](url).
+    """
+    return url.replace("\\", "\\\\").replace(")", "\\)")
