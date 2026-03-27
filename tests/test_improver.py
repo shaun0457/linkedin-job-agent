@@ -346,3 +346,71 @@ async def test_tailor_resume_returns_tailored_result_with_preview_data():
     assert result.preview_data["request_id"] == REQUEST_ID
     assert result.rm_job_id == RM_JOB_ID
     assert result.master_resume_id == MASTER_RESUME_ID
+
+
+@pytest.mark.asyncio
+async def test_tailor_resume_returns_none_when_upload_job_fails():
+    """tailor_resume returns None when _upload_job fails (line 22)."""
+    async def mock_post(url, json=None, **kwargs):
+        raise httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock())
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = mock_post
+        MockClient.return_value = mock_client
+
+        result = await improver.tailor_resume(
+            "http://localhost:8000", MASTER_RESUME_ID, SAMPLE_JOB
+        )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_tailor_resume_returns_none_when_improve_preview_fails():
+    """tailor_resume returns None when _improve_preview fails (line 27)."""
+    call_count = 0
+
+    async def mock_post(url, json=None, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if "jobs/upload" in url:
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = JOB_UPLOAD_RESPONSE
+            return resp
+        # improve/preview fails
+        raise httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock())
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = mock_post
+        MockClient.return_value = mock_client
+
+        result = await improver.tailor_resume(
+            "http://localhost:8000", MASTER_RESUME_ID, SAMPLE_JOB
+        )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_master_resume_id_returns_none_on_http_error():
+    """get_master_resume_id returns None when API raises HTTPError (lines 79-80)."""
+    async def mock_get(url, params=None, **kwargs):
+        raise httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock())
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = mock_get
+        MockClient.return_value = mock_client
+
+        result = await improver.get_master_resume_id("http://localhost:8000")
+
+    assert result is None
