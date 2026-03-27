@@ -5,6 +5,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+import httpx
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -40,6 +42,7 @@ def build_application(settings: cfg.Settings) -> Application:
     app.add_handler(CommandHandler("set_experience_level", cmd_set_experience_level))
     app.add_handler(CommandHandler("set_blacklist", cmd_set_blacklist))
     app.add_handler(CommandHandler("pending", cmd_pending))
+    app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app
@@ -374,6 +377,21 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Check Resume Matcher API connectivity."""
+    settings: cfg.Settings = context.bot_data["settings"]
+    url = f"{settings.resume_matcher_url}/api/v1/resumes/list"
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.get(url)
+        await update.message.reply_text("\u2705 Resume Matcher \u6b63\u5e38")
+    except httpx.TimeoutException:
+        await update.message.reply_text("\u23f1\ufe0f Resume Matcher \u9023\u7dda\u903e\u6642")
+    except httpx.ConnectError:
+        await update.message.reply_text("\u26a0\ufe0f Resume Matcher \u7121\u6cd5\u9023\u7dda")
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         "🤖 *Available Commands*\n\n"
@@ -389,6 +407,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/set\\_max `<n>` \\- Set max jobs per run\n"
         "/set\\_experience\\_level `<level1, level2>` \\- Update experience filter\n"
         "/set\\_blacklist `<co1, co2>` \\- Update company blacklist\n"
+        "/health \\- Check Resume Matcher API connectivity\n"
         "/help \\- Show this help message"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
