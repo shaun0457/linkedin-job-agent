@@ -7,7 +7,7 @@ Pick the top unclaimed item, implement with TDD (write tests first → RED → i
 
 ## Priority Queue
 
-### [P8] Close remaining notifier.py coverage gaps (~88% → 92%)
+(All P8-P11 completed on 2026-03-27! Overview of final work below.)
 **Why:** Lines 28-45 (`build_application`) require full Telegram app setup — skip.
 Lines 288-289, 297-298 are set_location/set_max empty-arg paths already tested elsewhere.
 Lines 327-328 (`cmd_search_config` MarkdownV2 parse_mode check) and 353-355 (experience level warning validation path) could be added.
@@ -67,6 +67,10 @@ Lines 327-328 (`cmd_search_config` MarkdownV2 parse_mode check) and 353-355 (exp
 | #15 | P6 weekly stats in /status (today + 7-day rolling, TDD) | 2026-03-27 |
 | #16 | P7 scrape_jobs with mocked ApifyClient (scraper 74% → 100%) | 2026-03-27 |
 | #17 | config.py 100% coverage (save_yaml + get_schedule_config) | 2026-03-27 |
+| #18 | P8 notifier.py coverage (88% → 93%) — 4 edge case tests | 2026-03-27 |
+| #19 | P9 improver.py coverage (94% → 100%) — 3 error-path tests | 2026-03-27 |
+| #20 | P10 /health command (RM connectivity check) — 3 tests | 2026-03-27 |
+| #21 | P11 AUTO_CONFIRM mode (auto-confirm resumes) — 3 tests | 2026-03-27 |
 
 **Note:** P5 (Resume type selection) was removed on 2026-03-27.
 **Reason:** The two files `master_computational.md` and `master_mechaniacl.md` are German university transcripts (Leistungsspiegel), not two separate resumes.
@@ -74,7 +78,7 @@ The user already has one combined main resume (`C:\Users\chengting\projects\resu
 The Resume Matcher agent architecture is correct — it takes one master resume and tailors it per job opening.
 Focus is now on: (1) ensuring the right resume is uploaded to RM as master, (2) enriching it with more details, and (3) continuing with P8-P11 coverage/feature improvements.
 
-**Current state (2026-03-27):** 144 tests, 91% coverage, all green.
+**Current state (2026-03-27, after P8-P11):** 157 tests, 94% overall coverage, all green.
 
 Coverage by module:
 | Module | Coverage |
@@ -84,6 +88,12 @@ Coverage by module:
 | deduper.py | 100% |
 | models.py | 100% |
 | scraper.py | 100% |
-| improver.py | 94% |
-| notifier.py | 88% |
+| improver.py | 100% |
+| notifier.py | 93% |
 | main.py | 75% |
+
+## Remaining Opportunities (Optional Future Work)
+
+- **notifier.py → 100%**: Lines 28-45 in `build_application()` (integration layer, typically excluded)
+- **main.py → 90%+**: Add pipeline integration tests for edge cases (rare startup scenarios)
+- **Resume content optimization**: Expand resume.md with more detailed work/project descriptions for better RM tailoring
