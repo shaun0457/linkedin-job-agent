@@ -37,6 +37,9 @@ def test_job_optional_fields():
     assert job.posted_at == "2024-01-15"
 
 
+_PREVIEW_DATA = {"job_id": "rm-1", "resume_preview": {}, "improvements": []}
+
+
 def test_tailored_result_default_keywords():
     job = Job(
         job_id="789",
@@ -46,9 +49,9 @@ def test_tailored_result_default_keywords():
         url="https://www.linkedin.com/jobs/view/789/",
         description="Research role.",
     )
-    result = TailoredResult(job=job, preview_resume_id="preview-abc")
+    result = TailoredResult(job=job, preview_data=_PREVIEW_DATA, rm_job_id="rm-1", master_resume_id="master-1")
     assert result.job is job
-    assert result.preview_resume_id == "preview-abc"
+    assert result.preview_data == _PREVIEW_DATA
     assert result.keywords_added == []
 
 
@@ -63,7 +66,9 @@ def test_tailored_result_with_keywords():
     )
     result = TailoredResult(
         job=job,
-        preview_resume_id="preview-xyz",
+        preview_data=_PREVIEW_DATA,
+        rm_job_id="rm-1",
+        master_resume_id="master-1",
         keywords_added=["PyTorch", "Transformers", "RLHF"],
     )
     assert len(result.keywords_added) == 3
@@ -81,8 +86,8 @@ def test_tailored_result_keywords_are_independent():
         url="https://example.com/a",
         description="D",
     )
-    r1 = TailoredResult(job=job, preview_resume_id="p1")
-    r2 = TailoredResult(job=job, preview_resume_id="p2")
+    r1 = TailoredResult(job=job, preview_data=_PREVIEW_DATA, rm_job_id="rm-1", master_resume_id="master-1")
+    r2 = TailoredResult(job=job, preview_data=_PREVIEW_DATA, rm_job_id="rm-2", master_resume_id="master-1")
     r1.keywords_added.append("keyword")
     assert r2.keywords_added == []
 

@@ -62,6 +62,7 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
         return
 
     # ── 4. Tailor + notify each job ─────────────────────────────────────
+    tailored = 0
     failed = 0
     for job in new_jobs:
         result = await improver.tailor_resume(
@@ -79,20 +80,24 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
             title=job.title,
             company=job.company,
             url=job.url,
-            preview_resume_id=result.preview_resume_id,
+            preview_data=result.preview_data,
+            rm_job_id=result.rm_job_id,
+            master_resume_id=result.master_resume_id,
             notified_at=now,
         )
 
         await notifier.notify_job(app, settings.telegram_chat_id, result)
+        tailored += 1
 
-    if failed:
-        await notifier.notify_error(
-            app,
-            settings.telegram_chat_id,
-            f"{failed} 個職缺處理失敗，已略過。",
-        )
+    await notifier.notify_run_summary(
+        app,
+        settings.telegram_chat_id,
+        found=len(new_jobs),
+        tailored=tailored,
+        failed=failed,
+    )
 
-    logger.info("Pipeline complete")
+    logger.info("Pipeline complete — found=%d tailored=%d failed=%d", len(new_jobs), tailored, failed)
 
 
 def main() -> None:
