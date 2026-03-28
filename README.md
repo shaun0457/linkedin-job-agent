@@ -33,7 +33,7 @@ Finds new jobs daily, auto-tailors your resume for each one, and pings you on Te
 ### 1. Prerequisites
 
 - Python 3.11+
-- [Resume Matcher](https://github.com/shaun0457/Resume-Matcher) running locally (default: `http://localhost:8000`)
+- [Resume Matcher](https://github.com/shaun0457/Resume-Matcher) running locally (default: `http://localhost:8001`)
 - Upload your master resume in Resume Matcher first
 
 ### 2. Install dependencies
@@ -71,7 +71,7 @@ Edit `.env`:
 APIFY_TOKEN=apify_api_xxxxxxxxxxxx
 TELEGRAM_BOT_TOKEN=123456789:AAxxxxxxxxxxxxxxxx
 TELEGRAM_CHAT_ID=your_numeric_chat_id
-RESUME_MATCHER_URL=http://localhost:8000
+RESUME_MATCHER_URL=http://localhost:8001
 ```
 
 Edit `config.yaml` to set initial search preferences (can also change via Telegram):

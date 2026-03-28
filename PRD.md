@@ -180,7 +180,7 @@ schedule:
   minute: 0
 
 resume_matcher:
-  base_url: "http://localhost:8000"
+  base_url: "http://localhost:8001"
 ```
 
 ### 3.4 Environment Variables
@@ -189,7 +189,7 @@ resume_matcher:
 APIFY_TOKEN=...              # LinkedIn scraper token (or "mock" for testing)
 TELEGRAM_BOT_TOKEN=...       # Telegram bot API token
 TELEGRAM_CHAT_ID=...         # User's Telegram chat ID
-RESUME_MATCHER_URL=...       # Resume Matcher base URL (default: http://localhost:8000)
+RESUME_MATCHER_URL=...       # Resume Matcher base URL (default: http://localhost:8001)
 AUTO_CONFIRM=false           # (default: false, set to "true" for auto-apply)
 ```
 

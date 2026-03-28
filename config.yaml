@@ -15,4 +15,4 @@ schedule:
   minute: 0
 
 resume_matcher:
-  base_url: "http://localhost:8000"
+  base_url: "http://localhost:8001"
