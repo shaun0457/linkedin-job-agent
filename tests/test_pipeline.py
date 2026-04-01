@@ -6,6 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from agent.models import Job, TailoredResult, SearchConfig
 
+_MOCK_SEARCH_CFG = SearchConfig(
+    keywords=["AI Engineer"],
+    location="Remote",
+    experience_level=["MID_SENIOR_LEVEL"],
+    blacklist_companies=[],
+    max_jobs_per_run=10,
+)
+
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +69,7 @@ async def test_pipeline_happy_path_tailors_and_notifies(mock_app, mock_settings)
     results = [_make_result(j) for j in jobs]
 
     with (
+        patch("main.get_search_config", return_value=_MOCK_SEARCH_CFG),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=jobs),
         patch("main.filter_new", return_value=jobs),
@@ -89,6 +98,7 @@ async def test_pipeline_insert_job_receives_correct_fields(mock_app, mock_settin
     result = _make_result(job)
 
     with (
+        patch("main.get_search_config", return_value=_MOCK_SEARCH_CFG),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
@@ -116,6 +126,7 @@ async def test_pipeline_aborts_if_no_master_resume(mock_app, mock_settings):
     from main import run_pipeline
 
     with (
+        patch("main.get_search_config", return_value=_MOCK_SEARCH_CFG),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value=None)),
         patch("main.notifier.notify_error", new=AsyncMock()) as mock_error,
         patch("main.scrape_jobs_mock") as mock_scrape,
@@ -135,6 +146,7 @@ async def test_pipeline_no_new_jobs_sends_no_summary(mock_app, mock_settings):
     from main import run_pipeline
 
     with (
+        patch("main.get_search_config", return_value=_MOCK_SEARCH_CFG),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[_make_job()]),
         patch("main.filter_new", return_value=[]),  # all seen
@@ -158,6 +170,7 @@ async def test_pipeline_counts_failed_tailoring(mock_app, mock_settings):
     result_ok = _make_result(job_ok)
 
     with (
+        patch("main.get_search_config", return_value=_MOCK_SEARCH_CFG),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job_ok, job_fail]),
         patch("main.filter_new", return_value=[job_ok, job_fail]),
@@ -186,6 +199,7 @@ async def test_pipeline_scraper_exception_sends_error(mock_app, mock_settings):
     from main import run_pipeline
 
     with (
+        patch("main.get_search_config", return_value=_MOCK_SEARCH_CFG),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", side_effect=RuntimeError("Apify down")),
         patch("main.notifier.notify_error", new=AsyncMock()) as mock_error,
