@@ -38,6 +38,8 @@ def mock_settings():
     s.telegram_chat_id = "999"
     s.resume_matcher_url = "http://rm:8000"
     s.auto_confirm = False
+    s.gemini_api_key = ""
+    s.min_job_score = 5
     return s
 
 
