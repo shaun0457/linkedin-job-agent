@@ -13,6 +13,7 @@ from agent import improver
 from agent import notifier
 from agent.config import Settings, get_schedule_config, get_search_config
 from agent.deduper import filter_new
+from agent.scorer import score_jobs
 from agent.scraper import scrape_jobs, scrape_jobs_mock
 
 logging.basicConfig(
@@ -61,7 +62,22 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
         logger.info("No new jobs found")
         return
 
-    # ── 4. Tailor + notify each job ─────────────────────────────────────
+    # ── 4. AI Score + filter ───────────────────────────────────────────
+    if settings.gemini_api_key:
+        scored = await score_jobs(
+            new_jobs, api_key=settings.gemini_api_key, min_score=settings.min_job_score,
+        )
+        skipped = len(new_jobs) - len(scored)
+        if skipped:
+            logger.info("AI scoring filtered out %d low-score jobs", skipped)
+        new_jobs = [s.job for s in scored]
+        if not new_jobs:
+            logger.info("All jobs filtered out by AI scoring")
+            return
+    else:
+        logger.info("No GEMINI_API_KEY set, skipping AI scoring")
+
+    # ── 5. Tailor + notify each job ─────────────────────────────────────
     tailored = 0
     failed = 0
     for job in new_jobs:
