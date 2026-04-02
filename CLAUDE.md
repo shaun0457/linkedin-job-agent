@@ -4,9 +4,9 @@ Semi-automated job search agent for a dual-degree engineer (Computational + Mech
 Scrapes LinkedIn jobs → tailors resume via Resume Matcher → notifies user on Telegram for confirmation.
 
 ```
-scraper.py (Apify) → deduper.py → improver.py (RM API) → notifier.py (Telegram) → user confirms
-                          ↑                                      ↑
-                     db.py (SQLite)                    config.py (YAML + .env)
+scraper.py (Apify) → deduper.py → scorer.py (AI) → improver.py (RM API) → notifier.py (Telegram)
+                          ↑                                                      ↑
+                     db.py (SQLite)                                     config.py (YAML + .env)
 ```
 
 **Context:** PRD.md (What/Why) · BRAINSTORMING.md (design decisions) · BACKLOG.md (priorities)
@@ -64,6 +64,8 @@ python main.py                                            # start agent + schedu
 ## Key Decisions
 
 - One combined master resume in RM (dual degree = one identity, not two resumes)
-- Local APScheduler at 8:00 + 18:00 Taiwan time (RM on localhost)
+- Local APScheduler at 8:00 + 18:00 Taiwan time (RM on localhost:8001)
 - Semi-auto: user always confirms before apply (unless AUTO_CONFIRM=true)
 - Config layering: config.yaml defaults → DB overrides (via Telegram commands)
+- Scraper builds LinkedIn search URLs from config (keywords + location + experience → URL with f_E params)
+- AI job scoring filters low-quality jobs before tailoring (saves RM API calls + user attention)

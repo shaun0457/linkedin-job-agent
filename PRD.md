@@ -1,8 +1,8 @@
 # LinkedIn Job Agent — Product Requirements Document (PRD)
 
-**Version**: 1.0
-**Last Updated**: 2026-03-27
-**Status**: Active Development (Phase 1 ✅ Complete, Phase 2 in Planning)
+**Version**: 1.1
+**Last Updated**: 2026-04-03
+**Status**: Active Development (Phase 1 ✅ Complete, Phase 2 In Progress)
 
 ---
 
@@ -96,6 +96,19 @@ So that highly matching jobs can auto-apply without manual confirmation.
 - ✅ If enabled + match score > threshold: auto-confirm without notification
 - ✅ If disabled: traditional flow (notify + wait for user)
 
+#### US-7: AI job quality scoring
+```
+As Cheng Ting,
+I want the system to score each job by company reputation, salary level, and fit to my background,
+So that I only review high-quality opportunities and don't waste time on low-value postings.
+```
+**Acceptance Criteria:**
+- ⏳ Each scraped job gets a score (1-10) from AI (Gemini) before tailoring
+- ⏳ Score considers: company tier, salary, role-background fit, growth potential
+- ⏳ Jobs below threshold (default: 5) are auto-skipped
+- ⏳ Scoring threshold configurable via Telegram `/set_min_score`
+- ⏳ Skipped jobs logged with score for review via `/list_scored`
+
 ---
 
 ## 3. Functional Requirements
@@ -106,23 +119,27 @@ So that highly matching jobs can auto-apply without manual confirmation.
 ```
 Schedule (8:00 AM / 6:00 PM)
     ↓
-Scrape LinkedIn + filter by config
+Scrape LinkedIn (build search URLs from config → Apify actor)
     ↓
 Deduplicate (check SQLite seen_jobs)
     ↓
-For each new job:
+AI Score each job (Gemini: company tier, salary, fit → 1-10)
+    ↓
+Filter: skip jobs below min_score threshold (default: 5)
+    ↓
+For each qualifying job:
   ├─ Upload job description → Resume Matcher
   ├─ Get tailored resume (keywords, suggestions)
   ├─ Insert into DB with status='notified'
   ├─ If AUTO_CONFIRM=false:
-  │   └─ Send Telegram: job + tailor summary + buttons
+  │   └─ Send Telegram: job + score + tailor summary + buttons
   │       (user: confirm → status='confirmed', skip → status='skipped')
   │
   └─ If AUTO_CONFIRM=true:
       └─ Auto-confirm → status='confirmed'
              (optional: send silent notification)
     ↓
-Send summary: "Found X jobs, tailored Y, user confirmed Z"
+Send summary: "Found X jobs, scored Y, tailored Z, skipped W (low score)"
 ```
 
 #### Workflow B: User Manual Commands
@@ -157,10 +174,10 @@ Return MarkdownV2-formatted response
 | `/health` — check RM connectivity | ✅ Phase 1 | P2 |
 | `AUTO_CONFIRM` — auto-apply high-match jobs | ✅ Phase 1 | P3 |
 | Dual master resume support | ✅ Phase 1 | P0 |
-| Big company scraping (TSMC, Google, etc.) | ⏳ Phase 2 | P1 |
+| AI job quality scoring (Gemini) | ⏳ Phase 2 | P1 |
+| `/set_min_score` — configure scoring threshold | ⏳ Phase 2 | P2 |
 | Resume content optimization | 📌 Phase 2 | P2 |
-| Deployment guide + Docker | ⏳ Phase 2 | P2 |
-| Job match scoring UI | ⏳ Phase 3 | P3 |
+| Deployment guide + Docker | ⏳ Phase 2 | P3 |
 | Interview tracking (follow-ups, offers) | ⏳ Phase 3 | P4 |
 
 ### 3.3 Configuration (config.yaml)
@@ -324,22 +341,22 @@ CREATE TABLE search_config (
 ## 10. Roadmap
 
 ### Phase 1 ✅ (Completed)
-- LinkedIn scraper via Apify
-- Resume Matcher integration
+- LinkedIn scraper via Apify (URL-based search with experience level filters)
+- Resume Matcher integration (Gemini LLM, port 8001)
 - Telegram bot with core commands
 - SQLite deduplication
 - APScheduler (8 AM + 6 PM)
-- TDD test suite (157 tests, 94% coverage)
+- TDD test suite (163 tests, 94% coverage)
 
-### Phase 2 (Q2 2026)
-- [ ] Big company job sources (Google Careers, Meta Jobs, TSMC Careers, etc.)
+### Phase 2 (Q2 2026 — In Progress)
+- [ ] AI job quality scoring (Gemini: company tier, salary, background fit)
+- [ ] Scoring threshold config (`/set_min_score`)
 - [ ] Resume content expansion (more work/project details)
 - [ ] Docker deployment + setup guide
-- [ ] Multi-source deduplication
 
 ### Phase 3 (Q3 2026)
 - [ ] Resume Matcher cloud deployment
-- [ ] Job recommendation engine (feedback loop)
+- [ ] Job recommendation engine (user feedback → scoring model)
 - [ ] Interview tracking (follow-ups, offers)
 - [ ] Analytics dashboard (application stats)
 
@@ -373,4 +390,5 @@ CREATE TABLE search_config (
 ---
 
 **Document Version History**
+- v1.1 (2026-04-03): Add AI job scoring (US-7), update scraper to URL-based, port 8001, 163 tests
 - v1.0 (2026-03-27): Initial PRD created after Phase 1 completion
