@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str
     resume_matcher_url: str = "http://localhost:8001"
     auto_confirm: bool = False
+    gemini_api_key: str = ""
+    min_job_score: int = 5
 
 
 def load_yaml() -> dict:
