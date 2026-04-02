@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock, patch
 
 from agent.models import Job, SearchConfig
-from agent.scraper import _parse_item, scrape_jobs_mock, _apply_blacklist, scrape_jobs
+from agent.scraper import _parse_item, scrape_jobs_mock, _apply_blacklist, scrape_jobs, _build_search_urls
 
 
 def _make_config(**kwargs) -> SearchConfig:
@@ -57,6 +57,23 @@ def test_parse_item_alternate_field_names():
     assert job.job_id == "99"
     assert job.title == "AI Engineer"
     assert job.company == "OpenAI"
+
+
+def test_parse_item_link_and_description_text_fields():
+    """Actor returns 'link' for URL and 'descriptionText' for description."""
+    item = {
+        "id": "42",
+        "title": "ML Engineer",
+        "companyName": "Bending Spoons",
+        "link": "https://de.linkedin.com/jobs/view/ml-engineer-at-bending-spoons",
+        "descriptionText": "Join our team...",
+        "location": "Berlin, Germany",
+        "postedAt": "2026-03-30T18:06:06.000Z",
+    }
+    job = _parse_item(item)
+    assert job is not None
+    assert job.url == "https://de.linkedin.com/jobs/view/ml-engineer-at-bending-spoons"
+    assert job.description == "Join our team..."
 
 
 def test_parse_item_missing_required_returns_none():
@@ -218,8 +235,8 @@ _VALID_ITEM = {
     "title": "AI Engineer",
     "companyName": "TechCorp",
     "location": "Berlin, Germany",
-    "jobUrl": "https://linkedin.com/jobs/view/live-1/",
-    "description": "Build AI systems",
+    "link": "https://linkedin.com/jobs/view/live-1/",
+    "descriptionText": "Build AI systems",
 }
 
 
@@ -248,10 +265,44 @@ def test_scrape_jobs_sends_correct_run_input():
 
     call_kwargs = mock_client.actor.return_value.call.call_args.kwargs
     run_input = call_kwargs["run_input"]
-    assert run_input["searchQueries"] == ["ML Engineer"]
-    assert run_input["location"] == "Netherlands"
-    assert run_input["experienceLevel"] == ["MID_SENIOR_LEVEL"]
-    assert run_input["maxResults"] == 5
+    assert "urls" in run_input
+    assert len(run_input["urls"]) == 1
+    assert "keywords=ML%20Engineer" in run_input["urls"][0]
+    assert "location=Netherlands" in run_input["urls"][0]
+    assert "f_E=4" in run_input["urls"][0]  # MID_SENIOR_LEVEL = 4
+    assert run_input["count"] == 5
+
+
+# ── _build_search_urls ───────────────────────────────────────────────────────
+
+
+def test_build_search_urls_single_keyword():
+    config = _make_config(keywords=["AI Engineer"], location="Germany", experience_level=[])
+    urls = _build_search_urls(config)
+    assert len(urls) == 1
+    assert "keywords=AI%20Engineer" in urls[0]
+    assert "location=Germany" in urls[0]
+    assert "f_E" not in urls[0]
+
+
+def test_build_search_urls_multiple_keywords():
+    config = _make_config(keywords=["ML Engineer", "Data Scientist"], location="Berlin")
+    urls = _build_search_urls(config)
+    assert len(urls) == 2
+    assert "ML%20Engineer" in urls[0]
+    assert "Data%20Scientist" in urls[1]
+
+
+def test_build_search_urls_experience_levels():
+    config = _make_config(experience_level=["ENTRY_LEVEL", "MID_SENIOR_LEVEL"])
+    urls = _build_search_urls(config)
+    assert "f_E=2%2C4" in urls[0]
+
+
+def test_build_search_urls_no_location():
+    config = _make_config(location="")
+    urls = _build_search_urls(config)
+    assert "location=" not in urls[0]
 
 
 def test_scrape_jobs_applies_blacklist():
