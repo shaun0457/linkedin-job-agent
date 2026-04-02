@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import quote
 
 from apify_client import ApifyClient
 
@@ -9,22 +10,46 @@ logger = logging.getLogger(__name__)
 # Apify actor for LinkedIn Jobs Scraper
 ACTOR_ID = "curious_coder/linkedin-jobs-scraper"
 
+# LinkedIn experience level filter values (f_E parameter)
+_EXP_LEVEL_MAP: dict[str, str] = {
+    "INTERNSHIP": "1",
+    "ENTRY_LEVEL": "2",
+    "ASSOCIATE": "3",
+    "MID_SENIOR_LEVEL": "4",
+    "DIRECTOR": "5",
+    "EXECUTIVE": "6",
+}
+
+
+def _build_search_urls(config: SearchConfig) -> list[str]:
+    """Convert SearchConfig into LinkedIn job search URLs."""
+    exp_values = [_EXP_LEVEL_MAP[e] for e in config.experience_level if e in _EXP_LEVEL_MAP]
+    exp_param = "%2C".join(exp_values) if exp_values else ""
+
+    urls = []
+    for keyword in config.keywords:
+        url = f"https://www.linkedin.com/jobs/search/?keywords={quote(keyword)}"
+        if config.location:
+            url += f"&location={quote(config.location)}"
+        if exp_param:
+            url += f"&f_E={exp_param}"
+        urls.append(url)
+    return urls
+
 
 def scrape_jobs(token: str, config: SearchConfig) -> list[Job]:
     """Fetch job listings from LinkedIn via Apify actor."""
     client = ApifyClient(token)
 
+    urls = _build_search_urls(config)
     run_input = {
-        "searchQueries": config.keywords,
-        "location": config.location,
-        "experienceLevel": config.experience_level,
-        "maxResults": config.max_jobs_per_run,
+        "urls": urls,
+        "count": config.max_jobs_per_run,
     }
 
     logger.info(
-        "Starting Apify scrape: keywords=%s location=%s max=%d",
-        config.keywords,
-        config.location,
+        "Starting Apify scrape: urls=%s count=%d",
+        urls,
         config.max_jobs_per_run,
     )
 
@@ -33,7 +58,7 @@ def scrape_jobs(token: str, config: SearchConfig) -> list[Job]:
 
     raw_jobs = [_parse_item(item) for item in items]
     parsed = [j for j in raw_jobs if j is not None]
-    jobs = _apply_blacklist(parsed, config.blacklist_companies)
+    jobs = _apply_blacklist(parsed, blacklist=config.blacklist_companies)
 
     logger.info("Scrape complete: %d jobs returned", len(jobs))
     return jobs
@@ -109,8 +134,13 @@ def _parse_item(item: dict) -> Job | None:
     job_id = item.get("id") or item.get("jobId") or item.get("trackingId")
     title = item.get("title") or item.get("jobTitle")
     company = item.get("companyName") or item.get("company")
-    url = item.get("jobUrl") or item.get("url")
-    description = item.get("description") or item.get("jobDescription") or ""
+    url = item.get("link") or item.get("jobUrl") or item.get("url")
+    description = (
+        item.get("descriptionText")
+        or item.get("description")
+        or item.get("jobDescription")
+        or ""
+    )
 
     if not all([job_id, title, company, url]):
         logger.warning("Skipping incomplete item: %s", item.get("id"))
