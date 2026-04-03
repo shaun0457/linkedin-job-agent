@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
-from agent.models import Job, TailoredResult
+from agent.models import Job, SearchConfig, TailoredResult
 
 
 def _mock_search_config():
