@@ -232,69 +232,41 @@ async def test_pipeline_uses_real_scraper_when_token_is_real(mock_app, mock_sett
     mock_mock_scrape.assert_not_called()
 
 
-# ── AI scoring integration ───────────────────────────────────────────────────
+# ── AI scoring integration (labels, not filters) ─────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_pipeline_with_scoring_filters_low_quality_jobs(mock_app, mock_settings):
-    """When gemini_api_key is set, scoring filters out low-score jobs."""
+async def test_pipeline_with_scoring_passes_score_to_notify(mock_app, mock_settings):
+    """When gemini_api_key is set, score and reason are passed to notify_job."""
     from main import run_pipeline
     from agent.scorer import ScoredJob
 
     mock_settings.gemini_api_key = "fake-gemini-key"
-    mock_settings.min_job_score = 5
 
-    job_good = _make_job("good", "NVIDIA")
-    job_bad = _make_job("bad", "NobodyCorp")
-
-    scored_result = [ScoredJob(job=job_good, score=9, reason="Top company")]
-
-    with (
-        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
-        patch("main.scrape_jobs_mock", return_value=[job_good, job_bad]),
-        patch("main.filter_new", return_value=[job_good, job_bad]),
-        patch("main.score_jobs", new=AsyncMock(return_value=scored_result)) as mock_score,
-        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job_good))),
-        patch("main.db.insert_job"),
-        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
-        patch("main.notifier.notify_run_summary", new=AsyncMock()) as mock_summary,
-    ):
-        await run_pipeline(mock_app, mock_settings)
-
-    mock_score.assert_awaited_once()
-    assert mock_notify.call_count == 1  # only good job notified
-    summary_kwargs = mock_summary.call_args.kwargs
-    assert summary_kwargs["found"] == 1  # only scored jobs counted
-    assert summary_kwargs["tailored"] == 1
-
-
-@pytest.mark.asyncio
-async def test_pipeline_scoring_filters_all_jobs_returns_early(mock_app, mock_settings):
-    """When scoring filters out ALL jobs, pipeline returns without tailoring."""
-    from main import run_pipeline
-
-    mock_settings.gemini_api_key = "fake-gemini-key"
-    mock_settings.min_job_score = 8
-
-    job = _make_job()
+    job = _make_job("good", "NVIDIA")
+    scored_result = [ScoredJob(job=job, score=9, reason="Top company")]
 
     with (
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
-        patch("main.score_jobs", new=AsyncMock(return_value=[])),  # all filtered
-        patch("main.improver.tailor_resume", new=AsyncMock()) as mock_tailor,
-        patch("main.notifier.notify_run_summary", new=AsyncMock()) as mock_summary,
+        patch("main.score_jobs", new=AsyncMock(return_value=scored_result)),
+        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job))),
+        patch("main.db.insert_job"),
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_run_summary", new=AsyncMock()),
     ):
         await run_pipeline(mock_app, mock_settings)
 
-    mock_tailor.assert_not_awaited()
-    mock_summary.assert_not_awaited()
+    mock_notify.assert_awaited_once()
+    call_kwargs = mock_notify.call_args.kwargs
+    assert call_kwargs["score"] == 9
+    assert call_kwargs["reason"] == "Top company"
 
 
 @pytest.mark.asyncio
-async def test_pipeline_skips_scoring_without_gemini_key(mock_app, mock_settings):
-    """When gemini_api_key is empty, scoring is skipped entirely."""
+async def test_pipeline_without_scoring_no_score_in_notify(mock_app, mock_settings):
+    """When gemini_api_key is empty, notify_job is called without score."""
     from main import run_pipeline
 
     mock_settings.gemini_api_key = ""
@@ -307,9 +279,48 @@ async def test_pipeline_skips_scoring_without_gemini_key(mock_app, mock_settings
         patch("main.score_jobs", new=AsyncMock()) as mock_score,
         patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job))),
         patch("main.db.insert_job"),
-        patch("main.notifier.notify_job", new=AsyncMock()),
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
         patch("main.notifier.notify_run_summary", new=AsyncMock()),
     ):
         await run_pipeline(mock_app, mock_settings)
 
     mock_score.assert_not_awaited()
+    call_kwargs = mock_notify.call_args.kwargs
+    assert call_kwargs.get("score") is None
+
+
+@pytest.mark.asyncio
+async def test_pipeline_scoring_preserves_sorted_order(mock_app, mock_settings):
+    """Pipeline processes jobs in score-sorted order (high→low)."""
+    from main import run_pipeline
+    from agent.scorer import ScoredJob
+
+    mock_settings.gemini_api_key = "fake-key"
+
+    job_low = _make_job("low", "SmallCorp")
+    job_high = _make_job("high", "NVIDIA")
+    # scored_jobs returns sorted: high first
+    scored = [
+        ScoredJob(job=job_high, score=9, reason="Great"),
+        ScoredJob(job=job_low, score=3, reason="Weak"),
+    ]
+
+    with (
+        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
+        patch("main.scrape_jobs_mock", return_value=[job_low, job_high]),
+        patch("main.filter_new", return_value=[job_low, job_high]),
+        patch("main.score_jobs", new=AsyncMock(return_value=scored)),
+        patch("main.improver.tailor_resume", new=AsyncMock(side_effect=[
+            _make_result(job_high), _make_result(job_low),
+        ])),
+        patch("main.db.insert_job"),
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_run_summary", new=AsyncMock()),
+    ):
+        await run_pipeline(mock_app, mock_settings)
+
+    # First notification should be the high-score job
+    first_call = mock_notify.call_args_list[0]
+    assert first_call.kwargs["score"] == 9
+    second_call = mock_notify.call_args_list[1]
+    assert second_call.kwargs["score"] == 3

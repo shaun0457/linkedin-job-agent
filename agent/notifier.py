@@ -55,6 +55,9 @@ async def notify_job(
     app: Application,
     chat_id: str,
     result,  # TailoredResult
+    *,
+    score: int | None = None,
+    reason: str = "",
 ) -> None:
     job = result.job
     keywords_text = (
@@ -62,7 +65,15 @@ async def notify_job(
     )
     n_kw = len(result.keywords_added)
 
+    # Score tier line (optional)
+    score_line = ""
+    if score is not None:
+        from agent.scorer import match_tier
+        icon, label = match_tier(score)
+        score_line = f"{icon} *{label}* \\({score}/10\\)：{_esc(reason)}\n"
+
     text = (
+        f"{score_line}"
         f"🏢 *{_esc(job.company)}* — {_esc(job.title)}\n"
         f"📍 {_esc(job.location or '—')}\n"
         f"🔗 [View Job]({_esc_url(job.url)})\n\n"

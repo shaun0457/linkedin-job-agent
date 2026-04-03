@@ -116,6 +116,52 @@ async def test_notify_job_no_keywords_shows_dash():
     assert "—" in text
 
 
+# ── notify_job with score ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_notify_job_shows_score_and_tier():
+    """When score/reason provided, notification shows tier icon + score."""
+    from agent.notifier import notify_job
+
+    app = _mock_app()
+    result = _make_result(_make_job())
+    await notify_job(app, "12345", result, score=9, reason="Top AI company")
+
+    text = app.bot.send_message.call_args.kwargs["text"]
+    assert "🟢" in text
+    assert "9" in text
+    assert "Top AI company" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_job_shows_weak_tier():
+    from agent.notifier import notify_job
+
+    app = _mock_app()
+    result = _make_result(_make_job())
+    await notify_job(app, "12345", result, score=2, reason="Poor fit")
+
+    text = app.bot.send_message.call_args.kwargs["text"]
+    assert "🔴" in text
+    assert "弱匹配" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_job_no_score_omits_tier_line():
+    """When no score provided, no tier line appears (backward compatible)."""
+    from agent.notifier import notify_job
+
+    app = _mock_app()
+    result = _make_result(_make_job())
+    await notify_job(app, "12345", result)
+
+    text = app.bot.send_message.call_args.kwargs["text"]
+    assert "🟢" not in text
+    assert "🟡" not in text
+    assert "🔴" not in text
+
+
 # ── notify_error ──────────────────────────────────────────────────────────────
 
 
