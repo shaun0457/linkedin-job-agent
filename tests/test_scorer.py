@@ -1,6 +1,6 @@
 """TDD tests for agent/scorer.py — AI job quality scoring."""
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -153,3 +153,57 @@ async def test_score_jobs_invalid_json_returns_all():
 
     assert len(result) == 1
     assert result[0].score == DEFAULT_MIN_SCORE
+
+
+# ── _call_llm ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_call_llm_sends_request_and_returns_text():
+    """_call_llm posts to Gemini API and extracts text from response."""
+    from agent.scorer import _call_llm
+
+    fake_response = {
+        "candidates": [
+            {"content": {"parts": [{"text": '[{"job_id":"1","score":8}]'}]}}
+        ]
+    }
+    mock_response = MagicMock()
+    mock_response.json.return_value = fake_response
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("agent.scorer.httpx.AsyncClient", return_value=mock_client):
+        result = await _call_llm("test prompt", "fake-key")
+
+    assert result == '[{"job_id":"1","score":8}]'
+    mock_client.post.assert_called_once()
+    call_url = mock_client.post.call_args[0][0]
+    assert "gemini-2.5-flash" in call_url
+    assert "fake-key" in call_url
+
+
+# ── _parse_scores ───────────────────────────────────────────────────────────
+
+
+def test_parse_scores_strips_markdown_fences():
+    """_parse_scores removes ```json fences from LLM response."""
+    from agent.scorer import _parse_scores
+
+    raw = '```json\n[{"job_id": "1", "score": 7, "reason": "ok"}]\n```'
+    result = _parse_scores(raw)
+    assert len(result) == 1
+    assert result[0]["score"] == 7
+
+
+def test_parse_scores_plain_json():
+    """_parse_scores handles plain JSON without fences."""
+    from agent.scorer import _parse_scores
+
+    raw = '[{"job_id": "1", "score": 9}]'
+    result = _parse_scores(raw)
+    assert result[0]["score"] == 9
