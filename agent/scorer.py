@@ -1,4 +1,4 @@
-"""AI-powered job quality scoring using Gemini."""
+"""AI-powered job quality scoring using Gemini — labels jobs, never filters."""
 import json
 import logging
 from dataclasses import dataclass, field
@@ -9,7 +9,7 @@ from agent.models import Job
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MIN_SCORE = 5
+DEFAULT_SCORE = 5
 
 SCORING_PROMPT_TEMPLATE = """\
 You are a job quality evaluator for an AI/ML engineer with dual M.Sc. degrees \
@@ -30,11 +30,24 @@ Jobs to score:
 """
 
 
+def match_tier(score: int) -> tuple[str, str]:
+    """Return (icon, label) for a numeric score."""
+    if score >= 7:
+        return ("🟢", "強匹配")
+    if score >= 4:
+        return ("🟡", "匹配")
+    return ("🔴", "弱匹配")
+
+
 @dataclass
 class ScoredJob:
     job: Job
     score: int
     reason: str = ""
+
+    @property
+    def tier(self) -> tuple[str, str]:
+        return match_tier(self.score)
 
 
 def _build_scoring_prompt(jobs: list[Job]) -> str:
@@ -75,11 +88,10 @@ async def _call_llm(prompt: str, api_key: str) -> str:
 async def score_jobs(
     jobs: list[Job],
     api_key: str,
-    min_score: int = DEFAULT_MIN_SCORE,
 ) -> list[ScoredJob]:
-    """Score jobs using AI and filter by minimum score.
+    """Score jobs using AI. Returns ALL jobs with scores, sorted high→low.
 
-    If LLM fails or returns invalid data, all jobs pass through with default score.
+    Never filters — labels only. If LLM fails, all jobs get DEFAULT_SCORE.
     """
     if not jobs:
         return []
@@ -91,7 +103,7 @@ async def score_jobs(
     except Exception:
         logger.warning("AI scoring failed, passing all jobs through", exc_info=True)
         return [
-            ScoredJob(job=job, score=DEFAULT_MIN_SCORE, reason="Scoring failed — included by default")
+            ScoredJob(job=job, score=DEFAULT_SCORE, reason="Scoring failed — included by default")
             for job in jobs
         ]
 
@@ -103,20 +115,22 @@ async def score_jobs(
             entry = score_map[job.job_id]
             scored = ScoredJob(
                 job=job,
-                score=entry.get("score", DEFAULT_MIN_SCORE),
+                score=entry.get("score", DEFAULT_SCORE),
                 reason=entry.get("reason", ""),
             )
         else:
             scored = ScoredJob(
-                job=job, score=DEFAULT_MIN_SCORE,
+                job=job, score=DEFAULT_SCORE,
                 reason="Not scored by AI — included by default",
             )
-        if scored.score >= min_score:
-            result.append(scored)
+        result.append(scored)
+
+    result.sort(key=lambda s: s.score, reverse=True)
 
     logger.info(
-        "Scored %d jobs: %d passed (min_score=%d), %d filtered out",
-        len(jobs), len(result), min_score, len(jobs) - len(result),
+        "Scored %d jobs: %s",
+        len(jobs),
+        ", ".join(f"{s.job.company}={s.score}" for s in result),
     )
     return result
 

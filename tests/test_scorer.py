@@ -1,11 +1,13 @@
-"""TDD tests for agent/scorer.py — AI job quality scoring."""
+"""TDD tests for agent/scorer.py — AI job quality scoring with tier labels."""
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent.models import Job, SearchConfig
-from agent.scorer import score_jobs, _build_scoring_prompt, ScoredJob, DEFAULT_MIN_SCORE
+from agent.models import Job
+from agent.scorer import (
+    score_jobs, _build_scoring_prompt, ScoredJob, match_tier, DEFAULT_SCORE,
+)
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -17,6 +19,24 @@ def _make_job(job_id: str = "j1", title: str = "ML Engineer",
         location="Germany", url=f"https://linkedin.com/jobs/{job_id}",
         description=description,
     )
+
+
+# ── match_tier ─────────────────────────────────────────────────────────────
+
+
+def test_match_tier_strong():
+    assert match_tier(7) == ("🟢", "強匹配")
+    assert match_tier(10) == ("🟢", "強匹配")
+
+
+def test_match_tier_medium():
+    assert match_tier(4) == ("🟡", "匹配")
+    assert match_tier(6) == ("🟡", "匹配")
+
+
+def test_match_tier_weak():
+    assert match_tier(1) == ("🔴", "弱匹配")
+    assert match_tier(3) == ("🔴", "弱匹配")
 
 
 # ── ScoredJob dataclass ─────────────────────────────────────────────────────
@@ -33,6 +53,13 @@ def test_scored_job_has_required_fields():
 def test_scored_job_default_reason():
     scored = ScoredJob(job=_make_job(), score=5)
     assert scored.reason == ""
+
+
+def test_scored_job_tier_property():
+    scored = ScoredJob(job=_make_job(), score=9)
+    icon, label = scored.tier
+    assert icon == "🟢"
+    assert label == "強匹配"
 
 
 # ── _build_scoring_prompt ────────────────────────────────────────────────────
@@ -58,51 +85,38 @@ def test_build_scoring_prompt_includes_scoring_criteria():
     assert "salary" in prompt.lower() or "compensation" in prompt.lower()
 
 
-# ── score_jobs ───────────────────────────────────────────────────────────────
+# ── score_jobs — returns ALL jobs (no filtering) ─────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_score_jobs_returns_scored_list():
+async def test_score_jobs_returns_all_jobs_scored():
+    """score_jobs returns ALL jobs with scores, never filters."""
     jobs = [_make_job(job_id="1"), _make_job(job_id="2")]
     mock_response = json.dumps([
         {"job_id": "1", "score": 9, "reason": "Top GPU company"},
-        {"job_id": "2", "score": 6, "reason": "Decent startup"},
+        {"job_id": "2", "score": 2, "reason": "Weak match"},
     ])
 
     with patch("agent.scorer._call_llm", new_callable=AsyncMock, return_value=mock_response):
         result = await score_jobs(jobs, api_key="fake-key")
 
-    assert len(result) == 2
-    assert result[0].score == 9
-    assert result[1].score == 6
+    assert len(result) == 2  # both returned, none filtered
 
 
 @pytest.mark.asyncio
-async def test_score_jobs_filters_below_threshold():
-    jobs = [_make_job(job_id="1"), _make_job(job_id="2")]
+async def test_score_jobs_sorted_by_score_descending():
+    """Results are sorted high→low so strong matches come first."""
+    jobs = [_make_job(job_id="1"), _make_job(job_id="2"), _make_job(job_id="3")]
     mock_response = json.dumps([
-        {"job_id": "1", "score": 8, "reason": "Great fit"},
-        {"job_id": "2", "score": 3, "reason": "Not relevant"},
+        {"job_id": "1", "score": 3, "reason": "Weak"},
+        {"job_id": "2", "score": 9, "reason": "Great"},
+        {"job_id": "3", "score": 6, "reason": "OK"},
     ])
 
     with patch("agent.scorer._call_llm", new_callable=AsyncMock, return_value=mock_response):
-        result = await score_jobs(jobs, api_key="fake-key", min_score=5)
+        result = await score_jobs(jobs, api_key="fake-key")
 
-    assert len(result) == 1
-    assert result[0].job.job_id == "1"
-
-
-@pytest.mark.asyncio
-async def test_score_jobs_custom_threshold():
-    jobs = [_make_job(job_id="1")]
-    mock_response = json.dumps([
-        {"job_id": "1", "score": 7, "reason": "Good company"},
-    ])
-
-    with patch("agent.scorer._call_llm", new_callable=AsyncMock, return_value=mock_response):
-        result = await score_jobs(jobs, api_key="fake-key", min_score=8)
-
-    assert len(result) == 0
+    assert [s.score for s in result] == [9, 6, 3]
 
 
 @pytest.mark.asyncio
@@ -117,11 +131,11 @@ async def test_score_jobs_llm_failure_returns_all_with_default_score():
     jobs = [_make_job(job_id="1"), _make_job(job_id="2")]
 
     with patch("agent.scorer._call_llm", new_callable=AsyncMock, side_effect=Exception("API error")):
-        result = await score_jobs(jobs, api_key="fake-key", min_score=5)
+        result = await score_jobs(jobs, api_key="fake-key")
 
     assert len(result) == 2
     for scored in result:
-        assert scored.score == DEFAULT_MIN_SCORE
+        assert scored.score == DEFAULT_SCORE
         assert "scoring failed" in scored.reason.lower()
 
 
@@ -131,16 +145,15 @@ async def test_score_jobs_partial_response_handles_missing_jobs():
     jobs = [_make_job(job_id="1"), _make_job(job_id="2")]
     mock_response = json.dumps([
         {"job_id": "1", "score": 9, "reason": "Great"},
-        # job_id "2" missing from response
     ])
 
     with patch("agent.scorer._call_llm", new_callable=AsyncMock, return_value=mock_response):
-        result = await score_jobs(jobs, api_key="fake-key", min_score=5)
+        result = await score_jobs(jobs, api_key="fake-key")
 
     assert len(result) == 2
     scores_by_id = {s.job.job_id: s for s in result}
     assert scores_by_id["1"].score == 9
-    assert scores_by_id["2"].score == DEFAULT_MIN_SCORE
+    assert scores_by_id["2"].score == DEFAULT_SCORE
 
 
 @pytest.mark.asyncio
@@ -152,7 +165,7 @@ async def test_score_jobs_invalid_json_returns_all():
         result = await score_jobs(jobs, api_key="fake-key")
 
     assert len(result) == 1
-    assert result[0].score == DEFAULT_MIN_SCORE
+    assert result[0].score == DEFAULT_SCORE
 
 
 # ── _call_llm ───────────────────────────────────────────────────────────────
