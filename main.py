@@ -62,20 +62,20 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
         logger.info("No new jobs found")
         return
 
-    # ── 4. AI Score + filter ───────────────────────────────────────────
+    # ── 4. AI Score (label, not filter) ──────────────────────────────
+    scored_jobs: list | None = None
     if settings.gemini_api_key:
-        scored = await score_jobs(
-            new_jobs, api_key=settings.gemini_api_key, min_score=settings.min_job_score,
+        scored_jobs = await score_jobs(
+            new_jobs, api_key=settings.gemini_api_key,
         )
-        skipped = len(new_jobs) - len(scored)
-        if skipped:
-            logger.info("AI scoring filtered out %d low-score jobs", skipped)
-        new_jobs = [s.job for s in scored]
-        if not new_jobs:
-            logger.info("All jobs filtered out by AI scoring")
-            return
+        new_jobs = [s.job for s in scored_jobs]
     else:
         logger.info("No GEMINI_API_KEY set, skipping AI scoring")
+
+    # Build score lookup for notifications
+    score_map: dict[str, tuple[int, str]] = {}
+    if scored_jobs:
+        score_map = {s.job.job_id: (s.score, s.reason) for s in scored_jobs}
 
     # ── 5. Tailor + notify each job ─────────────────────────────────────
     tailored = 0
@@ -109,7 +109,12 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
                 preview_data=result.preview_data,
             )
         else:
-            await notifier.notify_job(app, settings.telegram_chat_id, result)
+            score_info = score_map.get(job.job_id)
+            await notifier.notify_job(
+                app, settings.telegram_chat_id, result,
+                score=score_info[0] if score_info else None,
+                reason=score_info[1] if score_info else "",
+            )
         tailored += 1
 
     await notifier.notify_run_summary(
