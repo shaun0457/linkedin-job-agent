@@ -215,3 +215,108 @@ async def test_cmd_set_blacklist_clear_option():
     mock_set.assert_called_once_with([])
     text = mock_update.message.reply_text.call_args.args[0]
     assert "清空" in text
+
+
+# ── /time ───────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cmd_time_sets_24h():
+    from agent.notifier import cmd_time
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["24h"]
+
+    with patch("agent.notifier.cfg.set_time_filter") as mock_set:
+        await cmd_time(mock_update, mock_context)
+
+    mock_set.assert_called_once_with("r86400")
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "24" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_time_sets_1w():
+    from agent.notifier import cmd_time
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["1w"]
+
+    with patch("agent.notifier.cfg.set_time_filter") as mock_set:
+        await cmd_time(mock_update, mock_context)
+
+    mock_set.assert_called_once_with("r604800")
+
+
+@pytest.mark.asyncio
+async def test_cmd_time_sets_1m():
+    from agent.notifier import cmd_time
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["1m"]
+
+    with patch("agent.notifier.cfg.set_time_filter") as mock_set:
+        await cmd_time(mock_update, mock_context)
+
+    mock_set.assert_called_once_with("r2592000")
+
+
+@pytest.mark.asyncio
+async def test_cmd_time_sets_none():
+    from agent.notifier import cmd_time
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["none"]
+
+    with patch("agent.notifier.cfg.set_time_filter") as mock_set:
+        await cmd_time(mock_update, mock_context)
+
+    mock_set.assert_called_once_with("")
+
+
+@pytest.mark.asyncio
+async def test_cmd_time_no_args_shows_usage():
+    from agent.notifier import cmd_time
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = []
+
+    with patch("agent.notifier.cfg.set_time_filter") as mock_set:
+        await cmd_time(mock_update, mock_context)
+
+    mock_set.assert_not_called()
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "24h" in text  # usage should show options
+
+
+@pytest.mark.asyncio
+async def test_cmd_time_invalid_arg():
+    from agent.notifier import cmd_time
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["3y"]
+
+    with patch("agent.notifier.cfg.set_time_filter") as mock_set:
+        await cmd_time(mock_update, mock_context)
+
+    mock_set.assert_not_called()
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "24h" in text  # should show valid options

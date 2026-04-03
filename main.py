@@ -11,10 +11,15 @@ from telegram.ext import Application
 from agent import db
 from agent import improver
 from agent import notifier
+from dataclasses import replace
+
 from agent.config import Settings, get_schedule_config, get_search_config
 from agent.deduper import filter_new
 from agent.scorer import score_jobs
 from agent.scraper import scrape_jobs, scrape_jobs_mock
+
+# Escalation order for time filter when no new jobs found
+_TIME_ESCALATION = ["r86400", "r604800", "r2592000"]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,26 +45,45 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
         )
         return
 
-    # ── 2. Scrape ───────────────────────────────────────────────────────
+    # ── 2. Scrape + Deduplicate (with time escalation) ────────────────
+    # Build escalation list: start from current time_filter, then widen
+    current = search_cfg.time_filter
     try:
-        if not settings.apify_token or settings.apify_token.startswith("mock"):
-            logger.info("Mock scraper mode active")
-            jobs = scrape_jobs_mock(search_cfg)
-        else:
-            jobs = scrape_jobs(settings.apify_token, search_cfg)
-    except Exception as e:
-        logger.error("Scraper failed: %s", e)
-        await notifier.notify_error(
-            app, settings.telegram_chat_id, f"Scraper failed: {e}"
-        )
-        return
+        start_idx = _TIME_ESCALATION.index(current)
+    except ValueError:
+        start_idx = 0
+    time_filters_to_try = _TIME_ESCALATION[start_idx:]
 
-    # ── 3. Deduplicate ──────────────────────────────────────────────────
-    new_jobs = filter_new(jobs)
-    logger.info("%d new jobs after dedup (of %d scraped)", len(new_jobs), len(jobs))
+    new_jobs = []
+    for time_filter in time_filters_to_try:
+        cfg = replace(search_cfg, time_filter=time_filter)
+        try:
+            if not settings.apify_token or settings.apify_token.startswith("mock"):
+                logger.info("Mock scraper mode active")
+                jobs = scrape_jobs_mock(cfg)
+            else:
+                jobs = scrape_jobs(settings.apify_token, cfg)
+        except Exception as e:
+            logger.error("Scraper failed: %s", e)
+            await notifier.notify_error(
+                app, settings.telegram_chat_id, f"Scraper failed: {e}"
+            )
+            return
+
+        new_jobs = filter_new(jobs)
+        logger.info(
+            "%d new jobs after dedup (of %d scraped, time_filter=%s)",
+            len(new_jobs), len(jobs), time_filter,
+        )
+        if new_jobs:
+            break
+        logger.info("No new jobs with %s, expanding time range…", time_filter)
 
     if not new_jobs:
-        logger.info("No new jobs found")
+        logger.info("No new jobs found after all time ranges")
+        await notifier.notify_run_summary(
+            app, settings.telegram_chat_id, found=0, tailored=0, failed=0,
+        )
         return
 
     # ── 4. AI Score (label, not filter) ──────────────────────────────

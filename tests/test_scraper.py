@@ -305,6 +305,33 @@ def test_build_search_urls_no_location():
     assert "location=" not in urls[0]
 
 
+def test_build_search_urls_includes_time_filter():
+    config = _make_config(time_filter="r86400")
+    urls = _build_search_urls(config)
+    assert "f_TPR=r86400" in urls[0]
+    assert "sortBy=DD" in urls[0]
+
+
+def test_build_search_urls_default_time_filter():
+    config = _make_config()  # default time_filter
+    urls = _build_search_urls(config)
+    assert "f_TPR=r86400" in urls[0]
+    assert "sortBy=DD" in urls[0]
+
+
+def test_build_search_urls_weekly_time_filter():
+    config = _make_config(time_filter="r604800")
+    urls = _build_search_urls(config)
+    assert "f_TPR=r604800" in urls[0]
+
+
+def test_build_search_urls_empty_time_filter():
+    config = _make_config(time_filter="")
+    urls = _build_search_urls(config)
+    assert "f_TPR" not in urls[0]
+    assert "sortBy" not in urls[0]
+
+
 def test_scrape_jobs_applies_blacklist():
     config = _make_config(blacklist_companies=["TechCorp"])
     mock_client = _mock_apify([_VALID_ITEM])  # TechCorp item

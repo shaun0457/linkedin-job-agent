@@ -33,6 +33,8 @@ def _build_search_urls(config: SearchConfig) -> list[str]:
             url += f"&location={quote(config.location)}"
         if exp_param:
             url += f"&f_E={exp_param}"
+        if config.time_filter:
+            url += f"&f_TPR={config.time_filter}&sortBy=DD"
         urls.append(url)
     return urls
 
