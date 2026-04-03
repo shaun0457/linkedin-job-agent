@@ -31,6 +31,15 @@ class TailoredResult:
     keywords_added: list[str] = field(default_factory=list)
 
 
+# LinkedIn time filter values for f_TPR parameter
+VALID_TIME_FILTERS: dict[str, str] = {
+    "r86400": "過去 24 小時",
+    "r604800": "過去一週",
+    "r2592000": "過去一個月",
+    "": "不限",
+}
+
+
 @dataclass
 class SearchConfig:
     keywords: list[str]
@@ -38,3 +47,4 @@ class SearchConfig:
     experience_level: list[str]
     blacklist_companies: list[str]
     max_jobs_per_run: int
+    time_filter: str = "r86400"  # default: past 24 hours

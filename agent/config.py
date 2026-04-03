@@ -42,6 +42,7 @@ def get_search_config() -> SearchConfig:
     experience_level = overrides.get("experience_level", raw["experience_level"])
     blacklist = overrides.get("blacklist_companies", raw.get("blacklist_companies", []))
     max_jobs = overrides.get("max_jobs_per_run", raw.get("max_jobs_per_run", 20))
+    time_filter = overrides.get("time_filter", raw.get("time_filter", "r86400"))
 
     return SearchConfig(
         keywords=keywords,
@@ -49,6 +50,7 @@ def get_search_config() -> SearchConfig:
         experience_level=experience_level,
         blacklist_companies=blacklist,
         max_jobs_per_run=int(max_jobs),
+        time_filter=str(time_filter),
     )
 
 
@@ -70,6 +72,10 @@ def set_experience_level(levels: list[str]) -> None:
 
 def set_blacklist_companies(companies: list[str]) -> None:
     db.set_config_value("blacklist_companies", json.dumps(companies))
+
+
+def set_time_filter(value: str) -> None:
+    db.set_config_value("time_filter", json.dumps(value))
 
 
 def get_schedule_config() -> dict:

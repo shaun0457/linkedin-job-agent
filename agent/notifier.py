@@ -42,6 +42,7 @@ def build_application(settings: cfg.Settings) -> Application:
     app.add_handler(CommandHandler("set_experience_level", cmd_set_experience_level))
     app.add_handler(CommandHandler("set_blacklist", cmd_set_blacklist))
     app.add_handler(CommandHandler("pending", cmd_pending))
+    app.add_handler(CommandHandler("time", cmd_time))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -371,6 +372,45 @@ async def cmd_set_blacklist(
     companies = [c.strip() for c in raw.split(",") if c.strip()]
     cfg.set_blacklist_companies(companies)
     await update.message.reply_text(f"✅ 排除公司已更新：{', '.join(companies)}")
+
+
+_TIME_FILTER_MAP: dict[str, str] = {
+    "24h": "r86400",
+    "1w": "r604800",
+    "1m": "r2592000",
+    "none": "",
+}
+
+_TIME_FILTER_LABELS: dict[str, str] = {
+    "r86400": "過去 24 小時",
+    "r604800": "過去一週",
+    "r2592000": "過去一個月",
+    "": "不限",
+}
+
+
+async def cmd_time(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    valid_options = ", ".join(_TIME_FILTER_MAP.keys())
+    if not context.args:
+        await update.message.reply_text(
+            f"用法：/time <{valid_options}>\n"
+            f"例如：/time 1w（搜尋過去一週的職缺）"
+        )
+        return
+
+    choice = context.args[0].lower()
+    if choice not in _TIME_FILTER_MAP:
+        await update.message.reply_text(
+            f"⚠️ 無效選項：{choice}\n有效值：{valid_options}"
+        )
+        return
+
+    value = _TIME_FILTER_MAP[choice]
+    cfg.set_time_filter(value)
+    label = _TIME_FILTER_LABELS[value]
+    await update.message.reply_text(f"✅ 時間篩選已更新：{label}")
 
 
 async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

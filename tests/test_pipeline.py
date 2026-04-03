@@ -132,19 +132,45 @@ async def test_pipeline_aborts_if_no_master_resume(mock_app, mock_settings):
 
 
 @pytest.mark.asyncio
-async def test_pipeline_no_new_jobs_sends_no_summary(mock_app, mock_settings):
-    """When deduper filters out all jobs, no summary is sent."""
+async def test_pipeline_no_new_jobs_expands_time_and_retries(mock_app, mock_settings):
+    """When dedup returns 0, pipeline expands time range and retries scrape."""
+    from main import run_pipeline
+
+    job_new = _make_job("new-1")
+
+    # First scrape (24h): all seen. Second scrape (1w): finds new job.
+    with (
+        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
+        patch("main.scrape_jobs_mock", side_effect=[[_make_job()], [job_new]]) as mock_scrape,
+        patch("main.filter_new", side_effect=[[], [job_new]]),
+        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job_new))),
+        patch("main.db.insert_job"),
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_run_summary", new=AsyncMock()) as mock_summary,
+    ):
+        await run_pipeline(mock_app, mock_settings)
+
+    assert mock_scrape.call_count == 2
+    mock_notify.assert_awaited_once()
+    mock_summary.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_no_new_jobs_all_retries_exhausted(mock_app, mock_settings):
+    """When all time ranges exhausted with 0 new jobs, sends empty notification."""
     from main import run_pipeline
 
     with (
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[_make_job()]),
-        patch("main.filter_new", return_value=[]),  # all seen
+        patch("main.filter_new", return_value=[]),  # always 0
         patch("main.notifier.notify_run_summary", new=AsyncMock()) as mock_summary,
     ):
         await run_pipeline(mock_app, mock_settings)
 
-    mock_summary.assert_not_awaited()
+    # Should send a summary with 0 found after exhausting retries
+    mock_summary.assert_awaited_once()
+    assert mock_summary.call_args.kwargs["found"] == 0
 
 
 # ── partial failures ──────────────────────────────────────────────────────────
