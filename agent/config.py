@@ -5,7 +5,7 @@ import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from agent import db
-from agent.models import SearchConfig
+from agent.models import SearchConfig, ScoringConfig
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
 
@@ -76,6 +76,24 @@ def set_blacklist_companies(companies: list[str]) -> None:
 
 def set_time_filter(value: str) -> None:
     db.set_config_value("time_filter", json.dumps(value))
+
+
+def get_scoring_config() -> ScoringConfig:
+    """Load scoring config from YAML, then apply any DB overrides."""
+    raw = load_yaml()
+    scoring = raw.get("scoring", {})
+    overrides = db.get_search_overrides()
+
+    preferences = overrides.get(
+        "scoring_preferences",
+        scoring.get("preferences", []),
+    )
+
+    return ScoringConfig(preferences=preferences)
+
+
+def set_preferences(preferences: list[str]) -> None:
+    db.set_config_value("scoring_preferences", json.dumps(preferences))
 
 
 def get_schedule_config() -> dict:

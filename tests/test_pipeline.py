@@ -252,41 +252,99 @@ async def test_pipeline_uses_real_scraper_when_token_is_real(mock_app, mock_sett
     mock_mock_scrape.assert_not_called()
 
 
-# ── AI scoring integration (labels, not filters) ─────────────────────────────
+# ── AI scoring + tiered notifications ─────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_pipeline_with_scoring_passes_score_to_notify(mock_app, mock_settings):
-    """When gemini_api_key is set, score and reason are passed to notify_job."""
+async def test_pipeline_tiered_strong_gets_tailored_and_notified(mock_app, mock_settings):
+    """Strong match (7+) gets tailored + individual notification."""
     from main import run_pipeline
     from agent.scorer import ScoredJob
 
-    mock_settings.gemini_api_key = "fake-gemini-key"
-
-    job = _make_job("good", "NVIDIA")
-    scored_result = [ScoredJob(job=job, score=9, reason="Top company")]
+    mock_settings.gemini_api_key = "fake-key"
+    job = _make_job("strong", "NVIDIA")
+    scored = [ScoredJob(job=job, score=9, reason="Top company")]
 
     with (
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
-        patch("main.score_jobs", new=AsyncMock(return_value=scored_result)),
-        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job))),
+        patch("main.score_jobs", new=AsyncMock(return_value=scored)),
+        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job))) as mock_tailor,
         patch("main.db.insert_job"),
         patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_batch_summary", new=AsyncMock()) as mock_batch,
         patch("main.notifier.notify_run_summary", new=AsyncMock()),
     ):
         await run_pipeline(mock_app, mock_settings)
 
+    mock_tailor.assert_awaited_once()
     mock_notify.assert_awaited_once()
-    call_kwargs = mock_notify.call_args.kwargs
-    assert call_kwargs["score"] == 9
-    assert call_kwargs["reason"] == "Top company"
+    assert mock_notify.call_args.kwargs["score"] == 9
+    mock_batch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_pipeline_without_scoring_no_score_in_notify(mock_app, mock_settings):
-    """When gemini_api_key is empty, notify_job is called without score."""
+async def test_pipeline_tiered_medium_gets_batch_summary(mock_app, mock_settings):
+    """Medium match (4-6) gets batch summary, NOT individual notification."""
+    from main import run_pipeline
+    from agent.scorer import ScoredJob
+
+    mock_settings.gemini_api_key = "fake-key"
+    job = _make_job("med", "SAP")
+    scored = [ScoredJob(job=job, score=5, reason="OK")]
+
+    with (
+        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
+        patch("main.scrape_jobs_mock", return_value=[job]),
+        patch("main.filter_new", return_value=[job]),
+        patch("main.score_jobs", new=AsyncMock(return_value=scored)),
+        patch("main.improver.tailor_resume", new=AsyncMock()) as mock_tailor,
+        patch("main.db.insert_job") as mock_insert,
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_batch_summary", new=AsyncMock()) as mock_batch,
+        patch("main.notifier.notify_run_summary", new=AsyncMock()),
+    ):
+        await run_pipeline(mock_app, mock_settings)
+
+    mock_tailor.assert_not_awaited()  # medium NOT tailored
+    mock_notify.assert_not_awaited()  # no individual notify
+    mock_batch.assert_awaited_once()  # batch summary sent
+
+
+@pytest.mark.asyncio
+async def test_pipeline_tiered_weak_stored_silently(mock_app, mock_settings):
+    """Weak match (1-3) stored in DB, no notification."""
+    from main import run_pipeline
+    from agent.scorer import ScoredJob
+
+    mock_settings.gemini_api_key = "fake-key"
+    job = _make_job("weak", "NobodyCorp")
+    scored = [ScoredJob(job=job, score=2, reason="Poor fit")]
+
+    with (
+        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
+        patch("main.scrape_jobs_mock", return_value=[job]),
+        patch("main.filter_new", return_value=[job]),
+        patch("main.score_jobs", new=AsyncMock(return_value=scored)),
+        patch("main.improver.tailor_resume", new=AsyncMock()) as mock_tailor,
+        patch("main.db.insert_job") as mock_insert,
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_batch_summary", new=AsyncMock()) as mock_batch,
+        patch("main.notifier.notify_run_summary", new=AsyncMock()),
+    ):
+        await run_pipeline(mock_app, mock_settings)
+
+    mock_tailor.assert_not_awaited()
+    mock_notify.assert_not_awaited()
+    mock_batch.assert_not_awaited()
+    mock_insert.assert_called_once()  # stored in DB
+    assert mock_insert.call_args.kwargs["status"] == "weak"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_no_scoring_treats_all_as_strong(mock_app, mock_settings):
+    """Without Gemini key, all jobs are tailored + notified (no tier split)."""
     from main import run_pipeline
 
     mock_settings.gemini_api_key = ""
@@ -305,42 +363,40 @@ async def test_pipeline_without_scoring_no_score_in_notify(mock_app, mock_settin
         await run_pipeline(mock_app, mock_settings)
 
     mock_score.assert_not_awaited()
-    call_kwargs = mock_notify.call_args.kwargs
-    assert call_kwargs.get("score") is None
+    mock_notify.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_pipeline_scoring_preserves_sorted_order(mock_app, mock_settings):
-    """Pipeline processes jobs in score-sorted order (high→low)."""
+async def test_pipeline_run_summary_includes_tier_breakdown(mock_app, mock_settings):
+    """Run summary includes strong/medium/weak counts."""
     from main import run_pipeline
     from agent.scorer import ScoredJob
 
     mock_settings.gemini_api_key = "fake-key"
-
-    job_low = _make_job("low", "SmallCorp")
-    job_high = _make_job("high", "NVIDIA")
-    # scored_jobs returns sorted: high first
+    j_strong = _make_job("s1", "NVIDIA")
+    j_medium = _make_job("m1", "SAP")
+    j_weak = _make_job("w1", "NobodyCorp")
     scored = [
-        ScoredJob(job=job_high, score=9, reason="Great"),
-        ScoredJob(job=job_low, score=3, reason="Weak"),
+        ScoredJob(job=j_strong, score=9, reason="Great"),
+        ScoredJob(job=j_medium, score=5, reason="OK"),
+        ScoredJob(job=j_weak, score=2, reason="Poor"),
     ]
 
     with (
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
-        patch("main.scrape_jobs_mock", return_value=[job_low, job_high]),
-        patch("main.filter_new", return_value=[job_low, job_high]),
+        patch("main.scrape_jobs_mock", return_value=[j_strong, j_medium, j_weak]),
+        patch("main.filter_new", return_value=[j_strong, j_medium, j_weak]),
         patch("main.score_jobs", new=AsyncMock(return_value=scored)),
-        patch("main.improver.tailor_resume", new=AsyncMock(side_effect=[
-            _make_result(job_high), _make_result(job_low),
-        ])),
+        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(j_strong))),
         patch("main.db.insert_job"),
-        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
-        patch("main.notifier.notify_run_summary", new=AsyncMock()),
+        patch("main.notifier.notify_job", new=AsyncMock()),
+        patch("main.notifier.notify_batch_summary", new=AsyncMock()),
+        patch("main.notifier.notify_run_summary", new=AsyncMock()) as mock_summary,
     ):
         await run_pipeline(mock_app, mock_settings)
 
-    # First notification should be the high-score job
-    first_call = mock_notify.call_args_list[0]
-    assert first_call.kwargs["score"] == 9
-    second_call = mock_notify.call_args_list[1]
-    assert second_call.kwargs["score"] == 3
+    mock_summary.assert_awaited_once()
+    kw = mock_summary.call_args.kwargs
+    assert kw["strong"] == 1
+    assert kw["medium"] == 1
+    assert kw["weak"] == 1

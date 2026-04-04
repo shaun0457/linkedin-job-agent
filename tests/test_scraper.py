@@ -353,3 +353,34 @@ def test_scrape_jobs_skips_invalid_items():
 
     assert len(jobs) == 1
     assert jobs[0].job_id == "live-1"
+
+
+# ── count scales with URLs ──────────────────────────────────────────────────
+
+
+def test_scrape_jobs_count_scales_with_urls():
+    """count should be max_jobs_per_run * number of keywords (URLs)."""
+    config = _make_config(
+        keywords=["AI Engineer", "ML Engineer", "Robotics"],
+        max_jobs_per_run=10,
+    )
+    mock_client = _mock_apify([])
+
+    with patch("agent.scraper.ApifyClient", return_value=mock_client):
+        scrape_jobs("token", config)
+
+    run_input = mock_client.actor.return_value.call.call_args.kwargs["run_input"]
+    assert len(run_input["urls"]) == 3
+    assert run_input["count"] == 30  # 10 * 3
+
+
+def test_scrape_jobs_single_keyword_count_unchanged():
+    """Single keyword should keep count = max_jobs_per_run."""
+    config = _make_config(keywords=["AI Engineer"], max_jobs_per_run=15)
+    mock_client = _mock_apify([])
+
+    with patch("agent.scraper.ApifyClient", return_value=mock_client):
+        scrape_jobs("token", config)
+
+    run_input = mock_client.actor.return_value.call.call_args.kwargs["run_input"]
+    assert run_input["count"] == 15  # 15 * 1

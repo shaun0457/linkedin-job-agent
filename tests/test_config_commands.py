@@ -304,6 +304,89 @@ async def test_cmd_time_no_args_shows_usage():
     assert "24h" in text  # usage should show options
 
 
+# ── /set_preferences ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_preferences_updates_config():
+    from agent.notifier import cmd_set_preferences
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = ["偏好德國,", "偏好大公司,", "Salary", ">", "60k"]
+
+    with patch("agent.notifier.cfg.set_preferences") as mock_set:
+        await cmd_set_preferences(mock_update, mock_context)
+
+    mock_set.assert_called_once()
+    prefs = mock_set.call_args[0][0]
+    assert "偏好德國" in prefs
+    assert "偏好大公司" in prefs
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_preferences_no_args_shows_usage():
+    from agent.notifier import cmd_set_preferences
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+    mock_context.args = []
+
+    with patch("agent.notifier.cfg.set_preferences") as mock_set:
+        await cmd_set_preferences(mock_update, mock_context)
+
+    mock_set.assert_not_called()
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "用法" in text or "set_preferences" in text
+
+
+# ── /scoring_config ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cmd_scoring_config_displays_preferences():
+    from agent.notifier import cmd_scoring_config
+    from agent.models import ScoringConfig
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+
+    cfg = ScoringConfig(preferences=["Prefer Germany", "Salary > 60k"])
+    with patch("agent.notifier.cfg.get_scoring_config", return_value=cfg):
+        await cmd_scoring_config(mock_update, mock_context)
+
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "Prefer Germany" in text
+    assert "Salary > 60k" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_scoring_config_empty_preferences():
+    from agent.notifier import cmd_scoring_config
+    from agent.models import ScoringConfig
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+
+    cfg = ScoringConfig(preferences=[])
+    with patch("agent.notifier.cfg.get_scoring_config", return_value=cfg):
+        await cmd_scoring_config(mock_update, mock_context)
+
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "未設定" in text or "無" in text
+
+
+# ── /time (continued) ───────────────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
 async def test_cmd_time_invalid_arg():
     from agent.notifier import cmd_time

@@ -43,6 +43,9 @@ def build_application(settings: cfg.Settings) -> Application:
     app.add_handler(CommandHandler("set_blacklist", cmd_set_blacklist))
     app.add_handler(CommandHandler("pending", cmd_pending))
     app.add_handler(CommandHandler("time", cmd_time))
+    app.add_handler(CommandHandler("set_preferences", cmd_set_preferences))
+    app.add_handler(CommandHandler("scoring_config", cmd_scoring_config))
+    app.add_handler(CommandHandler("view_medium", cmd_view_medium))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -104,18 +107,50 @@ async def notify_error(app: Application, chat_id: str, message: str) -> None:
 
 
 async def notify_run_summary(
-    app: Application, chat_id: str, found: int, tailored: int, failed: int
+    app: Application, chat_id: str, found: int, tailored: int, failed: int,
+    strong: int = 0, medium: int = 0, weak: int = 0,
 ) -> None:
     """Send a run summary after each pipeline execution."""
-    text = (
-        f"✅ *Run complete*\n"
-        f"• 發現新職缺：{found}\n"
-        f"• 已客製化：{tailored}\n"
-        f"• 失敗：{failed}"
-    )
+    if strong or medium or weak:
+        text = (
+            f"✅ *Run complete*\n"
+            f"• 發現新職缺：{found}\n"
+            f"• 🟢 強匹配：{strong}（已客製化）\n"
+            f"• 🟡 中等匹配：{medium}（摘要通知）\n"
+            f"• 🔴 弱匹配：{weak}（已略過）\n"
+            f"• 失敗：{failed}"
+        )
+    else:
+        text = (
+            f"✅ *Run complete*\n"
+            f"• 發現新職缺：{found}\n"
+            f"• 已客製化：{tailored}\n"
+            f"• 失敗：{failed}"
+        )
     await app.bot.send_message(
         chat_id=chat_id,
         text=text,
+        parse_mode="MarkdownV2",
+    )
+
+
+async def notify_batch_summary(
+    app: Application, chat_id: str, scored_jobs: list,
+) -> None:
+    """Send a single summary message for medium-match jobs."""
+    if not scored_jobs:
+        return
+
+    lines = [f"🟡 中等匹配職缺（{len(scored_jobs)} 筆）\n"]
+    for s in scored_jobs[:15]:
+        lines.append(f"• {_esc(s.job.title)} @ {_esc(s.job.company)} \\({s.score}/10\\)")
+    if len(scored_jobs) > 15:
+        lines.append(f"⋯ 還有 {len(scored_jobs) - 15} 筆")
+    lines.append(f"\n使用 /view\\_medium 查看詳情")
+
+    await app.bot.send_message(
+        chat_id=chat_id,
+        text="\n".join(lines),
         parse_mode="MarkdownV2",
     )
 
@@ -276,18 +311,32 @@ async def cmd_retry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     sc = cfg.get_search_config()
+    scoring = cfg.get_scoring_config()
+
     kw_text = _esc(", ".join(sc.keywords))
     loc_text = _esc(sc.location)
-    max_text = str(sc.max_jobs_per_run)
+    exp_text = _esc(", ".join(sc.experience_level) if sc.experience_level else "—")
+    blacklist_text = _esc(", ".join(sc.blacklist_companies) if sc.blacklist_companies else "—")
+    time_text = _esc(_TIME_FILTER_LABELS.get(sc.time_filter, "不限"))
+    pref_text = _esc(", ".join(scoring.preferences)) if scoring.preferences else "—"
+
     text = (
-        "⚙️ 目前搜尋設定\n\n"
+        "⚙️ *所有設定一覽*\n\n"
         f"🔍 關鍵字：{kw_text}\n"
         f"📍 地點：{loc_text}\n"
-        f"📊 最多職缺數：{max_text}\n\n"
+        f"📊 最多職缺數：{sc.max_jobs_per_run}\n"
+        f"🎯 經驗等級：{exp_text}\n"
+        f"🚫 排除公司：{blacklist_text}\n"
+        f"🕐 時間篩選：{time_text}\n"
+        f"🧠 評分偏好：{pref_text}\n\n"
         "修改指令：\n"
         "  `/set_keywords` AI Engineer, ML Engineer\n"
         "  `/set_location` Berlin, Germany\n"
-        "  `/set_max` 15"
+        "  `/set_max` 15\n"
+        "  `/set_experience_level` MID\\_SENIOR\\_LEVEL, ENTRY\\_LEVEL\n"
+        "  `/set_blacklist` EvilCorp, BadInc\n"
+        "  `/time` 24h \\| 1w \\| 1m \\| none\n"
+        "  `/set_preferences` 偏好大公司, 偏好 robotics"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
 
@@ -304,7 +353,10 @@ async def cmd_set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     cfg.set_keywords(keywords)
-    await update.message.reply_text(f"✅ 關鍵字已更新：{', '.join(keywords)}")
+    msg = f"✅ 關鍵字已更新：{', '.join(keywords)}"
+    if len(keywords) < 3:
+        msg += "\n💡 建議加入更多關鍵字（3 個以上），可涵蓋更多職缺"
+    await update.message.reply_text(msg)
 
 
 async def cmd_set_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -413,6 +465,39 @@ async def cmd_time(
     await update.message.reply_text(f"✅ 時間篩選已更新：{label}")
 
 
+async def cmd_set_preferences(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "用法：/set_preferences 偏好德國, 偏好大公司, Salary > 60k\n"
+            "（用逗號分隔多個偏好）"
+        )
+        return
+
+    raw = " ".join(context.args)
+    prefs = [p.strip() for p in raw.split(",") if p.strip()]
+    if not prefs:
+        await update.message.reply_text("⚠️ 請提供至少一個偏好")
+        return
+
+    cfg.set_preferences(prefs)
+    formatted = "\n".join(f"• {p}" for p in prefs)
+    await update.message.reply_text(f"✅ 評分偏好已更新：\n{formatted}")
+
+
+async def cmd_scoring_config(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    scoring = cfg.get_scoring_config()
+    if not scoring.preferences:
+        await update.message.reply_text("📊 評分偏好：未設定\n用 /set_preferences 設定")
+        return
+
+    formatted = "\n".join(f"• {p}" for p in scoring.preferences)
+    await update.message.reply_text(f"📊 目前評分偏好：\n{formatted}")
+
+
 async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """List jobs waiting for confirm/skip."""
     jobs = db.get_pending_jobs(limit=10)
@@ -426,6 +511,25 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         lines.append(f"• {j['title']} @ {j['company']}  ({notified})\n  ID: {j['job_id']}")
 
     await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_view_medium(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show medium-match jobs stored in DB."""
+    jobs = db.get_medium_jobs(limit=20)
+    if not jobs:
+        await update.message.reply_text("目前沒有中等匹配的職缺")
+        return
+
+    lines = [f"🟡 中等匹配職缺（{len(jobs)} 筆）：\n"]
+    for j in jobs:
+        score = j.get("score", "?")
+        reason = j.get("score_reason", "")
+        lines.append(f"• {j['title']} @ {j['company']} ({score}/10)")
+        if reason:
+            lines.append(f"  {reason}")
+        lines.append(f"  {j['url']}")
+
+    await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
 
 
 async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -458,6 +562,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/set\\_max `<n>` \\- Set max jobs per run\n"
         "/set\\_experience\\_level `<level1, level2>` \\- Update experience filter\n"
         "/set\\_blacklist `<co1, co2>` \\- Update company blacklist\n"
+        "/time `<24h|1w|1m|none>` \\- Set time filter for job search\n"
+        "/set\\_preferences `<pref1, pref2>` \\- Update scoring preferences\n"
+        "/scoring\\_config \\- Show current scoring preferences\n"
+        "/view\\_medium \\- Show medium\\-match jobs\n"
         "/health \\- Check Resume Matcher API connectivity\n"
         "/help \\- Show this help message"
     )

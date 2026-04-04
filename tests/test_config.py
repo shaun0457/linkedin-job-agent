@@ -129,6 +129,47 @@ def test_set_blacklist_companies_stores_json():
     )
 
 
+# ── ScoringConfig ────────────────────────────────────────────────────────────
+
+
+def test_get_scoring_config_returns_dataclass():
+    from agent.config import get_scoring_config
+    from agent.models import ScoringConfig
+
+    with patch("agent.config.db.get_search_overrides", return_value={}):
+        config = get_scoring_config()
+    assert isinstance(config, ScoringConfig)
+    assert isinstance(config.preferences, list)
+
+
+def test_get_scoring_config_loads_from_yaml():
+    from agent.config import get_scoring_config
+
+    with patch("agent.config.db.get_search_overrides", return_value={}):
+        config = get_scoring_config()
+    # Should have preferences from config.yaml
+    assert len(config.preferences) > 0
+
+
+def test_get_scoring_config_db_override():
+    from agent.config import get_scoring_config
+
+    overrides = {"scoring_preferences": ["Prefer remote", "Prefer startups"]}
+    with patch("agent.config.db.get_search_overrides", return_value=overrides):
+        config = get_scoring_config()
+    assert config.preferences == ["Prefer remote", "Prefer startups"]
+
+
+def test_set_preferences_stores_json():
+    from agent.config import set_preferences
+
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_preferences(["Prefer Germany", "Salary > 60k"])
+    mock_set.assert_called_once_with(
+        "scoring_preferences", json.dumps(["Prefer Germany", "Salary > 60k"])
+    )
+
+
 def test_set_blacklist_companies_empty_list():
     with patch("agent.config.db.set_config_value") as mock_set:
         set_blacklist_companies([])

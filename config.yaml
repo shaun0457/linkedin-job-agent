@@ -2,6 +2,12 @@ search:
   keywords:
     - "AI/ML Engineer"
     - "Machine Learning Engineer"
+    - "Physical AI"
+    - "Robotics Engineer"
+    - "Embodied AI"
+    - "Sensor Fusion Engineer"
+    - "Digital Twin"
+    - "Predictive Maintenance"
   location: "Germany"
   experience_level:
     - "MID_SENIOR_LEVEL"
@@ -13,6 +19,13 @@ schedule:
   # 支援多個定時時間點 (hours 是列表, 每個時間點會添加一個 scheduler job)
   hours: [8, 18]  # 台灣時間 8:00 和 18:00
   minute: 0
+
+scoring:
+  preferences:
+    - "偏好德國或台灣的公司"
+    - "偏好 robotics、embodied AI、physical AI 相關"
+    - "加分：sensor fusion、digital twin、predictive maintenance"
+    - "偏好大公司（Fortune 500、獨角獸、知名新創）"
 
 resume_matcher:
   base_url: "http://localhost:8001"

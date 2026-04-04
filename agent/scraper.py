@@ -44,15 +44,15 @@ def scrape_jobs(token: str, config: SearchConfig) -> list[Job]:
     client = ApifyClient(token)
 
     urls = _build_search_urls(config)
+    total_count = config.max_jobs_per_run * len(urls)
     run_input = {
         "urls": urls,
-        "count": config.max_jobs_per_run,
+        "count": total_count,
     }
 
     logger.info(
-        "Starting Apify scrape: urls=%s count=%d",
-        urls,
-        config.max_jobs_per_run,
+        "Starting Apify scrape: urls=%d count=%d (max_per_run=%d)",
+        len(urls), total_count, config.max_jobs_per_run,
     )
 
     run = client.actor(ACTOR_ID).call(run_input=run_input)

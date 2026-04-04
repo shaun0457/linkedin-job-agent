@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agent.models import Job
+from agent.models import ScoringConfig
 from agent.scorer import (
     score_jobs, _build_scoring_prompt, ScoredJob, match_tier, DEFAULT_SCORE,
 )
@@ -85,6 +86,21 @@ def test_build_scoring_prompt_includes_scoring_criteria():
     assert "salary" in prompt.lower() or "compensation" in prompt.lower()
 
 
+def test_build_scoring_prompt_includes_preferences():
+    cfg = ScoringConfig(preferences=["Prefer Germany", "Salary > 60k"])
+    prompt = _build_scoring_prompt([_make_job()], scoring_config=cfg)
+    assert "Prefer Germany" in prompt
+    assert "Salary > 60k" in prompt
+
+
+def test_build_scoring_prompt_no_preferences_uses_default():
+    """Without scoring config, prompt still works (backward compat)."""
+    prompt = _build_scoring_prompt([_make_job()])
+    assert "Score each job" in prompt
+    # No preferences section when none provided
+    assert "User preferences" not in prompt
+
+
 # ── score_jobs — returns ALL jobs (no filtering) ─────────────────────────────
 
 
@@ -117,6 +133,21 @@ async def test_score_jobs_sorted_by_score_descending():
         result = await score_jobs(jobs, api_key="fake-key")
 
     assert [s.score for s in result] == [9, 6, 3]
+
+
+@pytest.mark.asyncio
+async def test_score_jobs_passes_scoring_config_to_prompt():
+    """score_jobs forwards scoring_config to prompt builder."""
+    jobs = [_make_job(job_id="1")]
+    cfg = ScoringConfig(preferences=["Prefer Taiwan"])
+    mock_response = json.dumps([{"job_id": "1", "score": 8, "reason": "OK"}])
+
+    with patch("agent.scorer._call_llm", new_callable=AsyncMock, return_value=mock_response) as mock_llm:
+        await score_jobs(jobs, api_key="fake-key", scoring_config=cfg)
+
+    # Verify the prompt sent to LLM contains the preference
+    prompt_sent = mock_llm.call_args[0][0]
+    assert "Prefer Taiwan" in prompt_sent
 
 
 @pytest.mark.asyncio

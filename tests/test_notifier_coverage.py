@@ -356,9 +356,9 @@ async def test_cmd_list_empty():
 
 
 @pytest.mark.asyncio
-async def test_cmd_config_shows_current_settings():
+async def test_cmd_config_shows_all_settings():
     from agent.notifier import cmd_config
-    from agent.models import SearchConfig
+    from agent.models import SearchConfig, ScoringConfig
 
     update = _mock_update()
     context = MagicMock()
@@ -366,15 +366,28 @@ async def test_cmd_config_shows_current_settings():
         keywords=["AI Engineer"],
         location="Germany",
         experience_level=["MID_SENIOR_LEVEL"],
-        blacklist_companies=[],
+        blacklist_companies=["BadCorp"],
         max_jobs_per_run=20,
+        time_filter="r86400",
     )
-    with patch("agent.notifier.cfg.get_search_config", return_value=sc):
+    scoring = ScoringConfig(preferences=["偏好大公司"])
+    with (
+        patch("agent.notifier.cfg.get_search_config", return_value=sc),
+        patch("agent.notifier.cfg.get_scoring_config", return_value=scoring),
+    ):
         await cmd_config(update, context)
 
     update.message.reply_text.assert_awaited_once()
+    text = update.message.reply_text.call_args.args[0]
     call_kwargs = update.message.reply_text.call_args.kwargs
     assert call_kwargs.get("parse_mode") == "MarkdownV2"
+    # All sections present
+    assert "AI Engineer" in text
+    assert "Germany" in text
+    assert "MID" in text
+    assert "BadCorp" in text
+    assert "24" in text  # 過去 24 小時
+    assert "大公司" in text
 
 
 # ── cmd_set_keywords / cmd_set_location / cmd_set_max ─────────────────────────
@@ -425,6 +438,38 @@ async def test_cmd_set_keywords_empty_after_split():
     mock_set.assert_not_called()
     text = update.message.reply_text.call_args.args[0]
     assert "至少一個" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_keywords_suggests_more_when_few():
+    """When fewer than 3 keywords set, suggest adding more."""
+    from agent.notifier import cmd_set_keywords
+
+    update = _mock_update()
+    context = MagicMock()
+    context.args = ["AI", "Engineer"]  # 1 keyword after split
+
+    with patch("agent.notifier.cfg.set_keywords"):
+        await cmd_set_keywords(update, context)
+
+    text = update.message.reply_text.call_args.args[0]
+    assert "建議" in text or "更多" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_keywords_no_suggestion_when_enough():
+    """When 3+ keywords, no suggestion needed."""
+    from agent.notifier import cmd_set_keywords
+
+    update = _mock_update()
+    context = MagicMock()
+    context.args = ["AI Engineer,", "ML Engineer,", "Robotics"]
+
+    with patch("agent.notifier.cfg.set_keywords"):
+        await cmd_set_keywords(update, context)
+
+    text = update.message.reply_text.call_args.args[0]
+    assert "建議" not in text
 
 
 @pytest.mark.asyncio

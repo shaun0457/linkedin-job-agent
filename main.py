@@ -13,7 +13,7 @@ from agent import improver
 from agent import notifier
 from dataclasses import replace
 
-from agent.config import Settings, get_schedule_config, get_search_config
+from agent.config import Settings, get_schedule_config, get_search_config, get_scoring_config
 from agent.deduper import filter_new
 from agent.scorer import score_jobs
 from agent.scraper import scrape_jobs, scrape_jobs_mock
@@ -89,67 +89,126 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
     # ── 4. AI Score (label, not filter) ──────────────────────────────
     scored_jobs: list | None = None
     if settings.gemini_api_key:
+        scoring_cfg = get_scoring_config()
         scored_jobs = await score_jobs(
             new_jobs, api_key=settings.gemini_api_key,
+            scoring_config=scoring_cfg,
         )
-        new_jobs = [s.job for s in scored_jobs]
     else:
         logger.info("No GEMINI_API_KEY set, skipping AI scoring")
 
-    # Build score lookup for notifications
-    score_map: dict[str, tuple[int, str]] = {}
-    if scored_jobs:
-        score_map = {s.job.job_id: (s.score, s.reason) for s in scored_jobs}
-
-    # ── 5. Tailor + notify each job ─────────────────────────────────────
+    # ── 5. Tiered processing ────────────────────────────────────────
     tailored = 0
     failed = 0
-    for job in new_jobs:
-        result = await improver.tailor_resume(
-            settings.resume_matcher_url, master_id, job
-        )
+    n_strong = 0
+    n_medium = 0
+    n_weak = 0
 
-        if result is None:
-            logger.warning("Tailoring failed for job %s, skipping", job.job_id)
-            failed += 1
-            continue
+    if scored_jobs:
+        strong = [s for s in scored_jobs if s.score >= 7]
+        medium = [s for s in scored_jobs if 4 <= s.score <= 6]
+        weak = [s for s in scored_jobs if s.score <= 3]
+        n_strong, n_medium, n_weak = len(strong), len(medium), len(weak)
 
-        now = datetime.now(timezone.utc).isoformat()
-        db.insert_job(
-            job_id=job.job_id,
-            title=job.title,
-            company=job.company,
-            url=job.url,
-            preview_data=result.preview_data,
-            rm_job_id=result.rm_job_id,
-            master_resume_id=result.master_resume_id,
-            notified_at=now,
-        )
+        # 🟢 Strong: tailor + individual notification
+        for s in strong:
+            job = s.job
+            result = await improver.tailor_resume(
+                settings.resume_matcher_url, master_id, job
+            )
+            if result is None:
+                logger.warning("Tailoring failed for job %s", job.job_id)
+                failed += 1
+                continue
 
-        if settings.auto_confirm:
-            await improver.confirm_resume(
-                settings.resume_matcher_url,
+            now = datetime.now(timezone.utc).isoformat()
+            db.insert_job(
+                job_id=job.job_id, title=job.title, company=job.company,
+                url=job.url, preview_data=result.preview_data,
+                rm_job_id=result.rm_job_id,
                 master_resume_id=result.master_resume_id,
-                preview_data=result.preview_data,
+                notified_at=now, score=s.score, score_reason=s.reason,
             )
-        else:
-            score_info = score_map.get(job.job_id)
-            await notifier.notify_job(
-                app, settings.telegram_chat_id, result,
-                score=score_info[0] if score_info else None,
-                reason=score_info[1] if score_info else "",
-            )
-        tailored += 1
 
+            if settings.auto_confirm:
+                await improver.confirm_resume(
+                    settings.resume_matcher_url,
+                    master_resume_id=result.master_resume_id,
+                    preview_data=result.preview_data,
+                )
+            else:
+                await notifier.notify_job(
+                    app, settings.telegram_chat_id, result,
+                    score=s.score, reason=s.reason,
+                )
+            tailored += 1
+
+        # 🟡 Medium: store in DB + batch summary (no tailor)
+        for s in medium:
+            now = datetime.now(timezone.utc).isoformat()
+            db.insert_job(
+                job_id=s.job.job_id, title=s.job.title, company=s.job.company,
+                url=s.job.url, preview_data={}, rm_job_id="",
+                master_resume_id="", notified_at=now,
+                score=s.score, score_reason=s.reason, status="medium",
+            )
+        if medium:
+            await notifier.notify_batch_summary(
+                app, settings.telegram_chat_id, medium,
+            )
+
+        # 🔴 Weak: store silently
+        for s in weak:
+            now = datetime.now(timezone.utc).isoformat()
+            db.insert_job(
+                job_id=s.job.job_id, title=s.job.title, company=s.job.company,
+                url=s.job.url, preview_data={}, rm_job_id="",
+                master_resume_id="", notified_at=now,
+                score=s.score, score_reason=s.reason, status="weak",
+            )
+
+    else:
+        # No scoring — treat all as strong (backward compatible)
+        for job in new_jobs:
+            result = await improver.tailor_resume(
+                settings.resume_matcher_url, master_id, job
+            )
+            if result is None:
+                logger.warning("Tailoring failed for job %s", job.job_id)
+                failed += 1
+                continue
+
+            now = datetime.now(timezone.utc).isoformat()
+            db.insert_job(
+                job_id=job.job_id, title=job.title, company=job.company,
+                url=job.url, preview_data=result.preview_data,
+                rm_job_id=result.rm_job_id,
+                master_resume_id=result.master_resume_id, notified_at=now,
+            )
+
+            if settings.auto_confirm:
+                await improver.confirm_resume(
+                    settings.resume_matcher_url,
+                    master_resume_id=result.master_resume_id,
+                    preview_data=result.preview_data,
+                )
+            else:
+                await notifier.notify_job(
+                    app, settings.telegram_chat_id, result,
+                )
+            tailored += 1
+
+    found = len(scored_jobs) if scored_jobs else len(new_jobs)
     await notifier.notify_run_summary(
-        app,
-        settings.telegram_chat_id,
-        found=len(new_jobs),
-        tailored=tailored,
-        failed=failed,
+        app, settings.telegram_chat_id,
+        found=found, tailored=tailored, failed=failed,
+        strong=n_strong, medium=n_medium, weak=n_weak,
     )
 
-    logger.info("Pipeline complete — found=%d tailored=%d failed=%d", len(new_jobs), tailored, failed)
+    logger.info(
+        "Pipeline complete — found=%d strong=%d medium=%d weak=%d tailored=%d failed=%d",
+        found, n_strong, n_medium, n_weak, tailored, failed,
+    )
 
 
 def main() -> None:

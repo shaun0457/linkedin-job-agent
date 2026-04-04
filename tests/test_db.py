@@ -97,3 +97,64 @@ def test_set_config_value_overwrite():
 
 def test_get_config_value_missing_key():
     assert db_module.get_config_value("nonexistent_key") is None
+
+
+# ── score columns ────────────────────────────────────────────────────────────
+
+
+def test_insert_job_with_score():
+    db_module.insert_job(
+        job_id="scored-1", title="ML Eng", company="NVIDIA", url="https://x.com/1",
+        preview_data={}, rm_job_id="rm-1", master_resume_id="m-1",
+        notified_at=_now(), score=9, score_reason="Top company",
+    )
+    with db_module._conn() as con:
+        row = con.execute(
+            "SELECT score, score_reason FROM seen_jobs WHERE job_id = 'scored-1'"
+        ).fetchone()
+    assert row["score"] == 9
+    assert row["score_reason"] == "Top company"
+
+
+def test_insert_job_without_score_defaults_null():
+    db_module.insert_job(
+        job_id="no-score", title="Eng", company="Corp", url="https://x.com/2",
+        preview_data={}, rm_job_id="rm-2", master_resume_id="m-1",
+        notified_at=_now(),
+    )
+    with db_module._conn() as con:
+        row = con.execute(
+            "SELECT score, score_reason FROM seen_jobs WHERE job_id = 'no-score'"
+        ).fetchone()
+    assert row["score"] is None
+
+
+def test_insert_job_with_status():
+    """insert_job can set custom status (e.g., 'medium', 'weak')."""
+    db_module.insert_job(
+        job_id="med-1", title="Eng", company="Corp", url="https://x.com/3",
+        preview_data={}, rm_job_id="", master_resume_id="",
+        notified_at=_now(), score=5, status="medium",
+    )
+    with db_module._conn() as con:
+        row = con.execute(
+            "SELECT status FROM seen_jobs WHERE job_id = 'med-1'"
+        ).fetchone()
+    assert row["status"] == "medium"
+
+
+def test_get_medium_jobs_returns_medium_status():
+    db_module.insert_job(
+        job_id="m1", title="Data Eng", company="SAP", url="https://x.com/4",
+        preview_data={}, rm_job_id="", master_resume_id="",
+        notified_at=_now(), score=5, score_reason="OK", status="medium",
+    )
+    db_module.insert_job(
+        job_id="s1", title="ML Eng", company="NVIDIA", url="https://x.com/5",
+        preview_data={}, rm_job_id="", master_resume_id="",
+        notified_at=_now(), score=9, status="notified",
+    )
+    result = db_module.get_medium_jobs(limit=10)
+    assert len(result) == 1
+    assert result[0]["job_id"] == "m1"
+    assert result[0]["score"] == 5

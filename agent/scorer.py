@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from agent.models import Job
+from agent.models import Job, ScoringConfig
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +50,11 @@ class ScoredJob:
         return match_tier(self.score)
 
 
-def _build_scoring_prompt(jobs: list[Job]) -> str:
-    """Build the scoring prompt with job details."""
+def _build_scoring_prompt(
+    jobs: list[Job],
+    scoring_config: ScoringConfig | None = None,
+) -> str:
+    """Build the scoring prompt with job details and optional user preferences."""
     lines = []
     for job in jobs:
         desc_preview = job.description[:200] if job.description else ""
@@ -64,7 +67,18 @@ def _build_scoring_prompt(jobs: list[Job]) -> str:
             f"  description: {desc_preview}"
         )
     jobs_block = "\n".join(lines)
-    return SCORING_PROMPT_TEMPLATE.format(jobs_block=jobs_block)
+    prompt = SCORING_PROMPT_TEMPLATE.format(jobs_block=jobs_block)
+
+    if scoring_config and scoring_config.preferences:
+        prefs = "\n".join(f"- {p}" for p in scoring_config.preferences)
+        prompt = prompt.replace(
+            "Score each job 1-10 based on:",
+            f"**User preferences (IMPORTANT — weight these heavily):**\n"
+            f"{prefs}\n\n"
+            f"Score each job 1-10 based on:",
+        )
+
+    return prompt
 
 
 async def _call_llm(prompt: str, api_key: str) -> str:
@@ -88,6 +102,7 @@ async def _call_llm(prompt: str, api_key: str) -> str:
 async def score_jobs(
     jobs: list[Job],
     api_key: str,
+    scoring_config: ScoringConfig | None = None,
 ) -> list[ScoredJob]:
     """Score jobs using AI. Returns ALL jobs with scores, sorted high→low.
 
@@ -97,7 +112,7 @@ async def score_jobs(
         return []
 
     try:
-        prompt = _build_scoring_prompt(jobs)
+        prompt = _build_scoring_prompt(jobs, scoring_config=scoring_config)
         raw = await _call_llm(prompt, api_key)
         scores = _parse_scores(raw)
     except Exception:

@@ -30,6 +30,8 @@ _MIGRATE_ADD_COLUMNS = [
     "ALTER TABLE seen_jobs ADD COLUMN preview_data TEXT",
     "ALTER TABLE seen_jobs ADD COLUMN rm_job_id TEXT",
     "ALTER TABLE seen_jobs ADD COLUMN master_resume_id TEXT",
+    "ALTER TABLE seen_jobs ADD COLUMN score INTEGER",
+    "ALTER TABLE seen_jobs ADD COLUMN score_reason TEXT",
 ]
 
 
@@ -76,19 +78,25 @@ def insert_job(
     rm_job_id: str,
     master_resume_id: str,
     notified_at: str,
+    score: int | None = None,
+    score_reason: str | None = None,
+    status: str = "notified",
 ) -> None:
     with _conn() as con:
         con.execute(
             """INSERT OR IGNORE INTO seen_jobs
                (job_id, title, company, url, status,
-                preview_data, rm_job_id, master_resume_id, notified_at)
-               VALUES (?, ?, ?, ?, 'notified', ?, ?, ?, ?)""",
+                preview_data, rm_job_id, master_resume_id, notified_at,
+                score, score_reason)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                job_id, title, company, url,
+                job_id, title, company, url, status,
                 json.dumps(preview_data),
                 rm_job_id,
                 master_resume_id,
                 notified_at,
+                score,
+                score_reason,
             ),
         )
 
@@ -150,6 +158,18 @@ def get_pending_jobs(limit: int = 20) -> list[dict]:
         rows = con.execute(
             """SELECT job_id, title, company, notified_at
                FROM seen_jobs WHERE status = 'notified'
+               ORDER BY notified_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_medium_jobs(limit: int = 20) -> list[dict]:
+    """Return jobs with status='medium', newest first."""
+    with _conn() as con:
+        rows = con.execute(
+            """SELECT job_id, title, company, url, score, score_reason, notified_at
+               FROM seen_jobs WHERE status = 'medium'
                ORDER BY notified_at DESC LIMIT ?""",
             (limit,),
         ).fetchall()

@@ -1,6 +1,9 @@
-"""Tests for new notifier functions: notify_run_summary, cmd_search_config (TDD)."""
+"""Tests for new notifier functions: notify_run_summary, batch_summary, cmd_search_config (TDD)."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from agent.models import Job
+from agent.scorer import ScoredJob
 
 
 # ── notify_run_summary ──────────────────────────────────────────────────────
@@ -56,6 +59,142 @@ async def test_notify_run_summary_chat_id_passed():
     call_kwargs = mock_app.bot.send_message.call_args
     kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
     assert kwargs.get("chat_id") == "999888"
+
+
+# ── notify_run_summary with tier breakdown ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_notify_run_summary_with_tier_breakdown():
+    from agent.notifier import notify_run_summary
+
+    app = MagicMock()
+    app.bot = AsyncMock()
+    app.bot.send_message = AsyncMock()
+
+    await notify_run_summary(
+        app, "12345", found=25, tailored=3, failed=0,
+        strong=3, medium=8, weak=14,
+    )
+
+    text = app.bot.send_message.call_args.kwargs["text"]
+    assert "🟢" in text
+    assert "🟡" in text
+    assert "🔴" in text
+    assert "3" in text  # strong
+    assert "8" in text  # medium
+    assert "14" in text  # weak
+
+
+@pytest.mark.asyncio
+async def test_notify_run_summary_backward_compat():
+    """Works without tier args (backward compatible)."""
+    from agent.notifier import notify_run_summary
+
+    app = MagicMock()
+    app.bot = AsyncMock()
+    app.bot.send_message = AsyncMock()
+
+    await notify_run_summary(app, "12345", found=5, tailored=3, failed=1)
+    app.bot.send_message.assert_awaited_once()
+
+
+# ── notify_batch_summary ──────────────────────────────────────────────────
+
+
+def _make_scored_job(job_id: str, company: str, score: int) -> ScoredJob:
+    job = Job(
+        job_id=job_id, title="Engineer", company=company,
+        location="Germany", url=f"https://linkedin.com/jobs/{job_id}",
+        description="desc",
+    )
+    return ScoredJob(job=job, score=score, reason="OK")
+
+
+@pytest.mark.asyncio
+async def test_notify_batch_summary_sends_single_message():
+    from agent.notifier import notify_batch_summary
+
+    app = MagicMock()
+    app.bot = AsyncMock()
+    app.bot.send_message = AsyncMock()
+
+    jobs = [_make_scored_job("1", "SAP", 5), _make_scored_job("2", "Bosch", 4)]
+    await notify_batch_summary(app, "12345", jobs)
+
+    app.bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_notify_batch_summary_contains_companies():
+    from agent.notifier import notify_batch_summary
+
+    app = MagicMock()
+    app.bot = AsyncMock()
+    app.bot.send_message = AsyncMock()
+
+    jobs = [_make_scored_job("1", "SAP", 5), _make_scored_job("2", "Bosch", 4)]
+    await notify_batch_summary(app, "12345", jobs)
+
+    text = app.bot.send_message.call_args.kwargs["text"]
+    assert "SAP" in text
+    assert "Bosch" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_batch_summary_empty_no_message():
+    from agent.notifier import notify_batch_summary
+
+    app = MagicMock()
+    app.bot = AsyncMock()
+    app.bot.send_message = AsyncMock()
+
+    await notify_batch_summary(app, "12345", [])
+    app.bot.send_message.assert_not_awaited()
+
+
+# ── cmd_view_medium ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cmd_view_medium_shows_jobs():
+    from agent.notifier import cmd_view_medium
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+
+    fake_jobs = [
+        {"job_id": "1", "title": "Data Eng", "company": "SAP", "url": "https://x.com/1",
+         "score": 5, "score_reason": "OK", "notified_at": "2026-04-03T00:00:00"},
+        {"job_id": "2", "title": "ML Eng", "company": "Bosch", "url": "https://x.com/2",
+         "score": 4, "score_reason": "Decent", "notified_at": "2026-04-03T00:00:00"},
+    ]
+
+    with patch("agent.notifier.db.get_medium_jobs", return_value=fake_jobs):
+        await cmd_view_medium(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "SAP" in text
+    assert "Bosch" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_view_medium_empty():
+    from agent.notifier import cmd_view_medium
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+
+    with patch("agent.notifier.db.get_medium_jobs", return_value=[]):
+        await cmd_view_medium(mock_update, mock_context)
+
+    text = mock_update.message.reply_text.call_args.args[0]
+    assert "沒有" in text or "無" in text
 
 
 # ── cmd_search_config ───────────────────────────────────────────────────────

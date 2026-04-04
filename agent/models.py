@@ -31,6 +31,11 @@ class TailoredResult:
     keywords_added: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ScoringConfig:
+    preferences: list[str] = field(default_factory=list)
+
+
 # LinkedIn time filter values for f_TPR parameter
 VALID_TIME_FILTERS: dict[str, str] = {
     "r86400": "過去 24 小時",
