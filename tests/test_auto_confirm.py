@@ -4,7 +4,18 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from agent.models import Job, TailoredResult
+from agent.models import Job, TailoredResult, SearchConfig
+
+
+def _mock_search_config() -> SearchConfig:
+    return SearchConfig(
+        keywords=["ML Engineer"],
+        location="London, UK",
+        experience_level=["MID_SENIOR_LEVEL"],
+        blacklist_companies=[],
+        max_jobs_per_run=10,
+        time_filter="r86400",
+    )
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
@@ -64,6 +75,7 @@ async def test_auto_confirm_disabled_by_default(mock_app, mock_settings):
     result = _make_result(job)
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
@@ -92,6 +104,7 @@ async def test_auto_confirm_enabled_auto_confirms(mock_app, mock_settings):
     result = _make_result(job)
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
@@ -123,6 +136,7 @@ async def test_auto_confirm_enabled_skips_on_failure(mock_app, mock_settings):
     job = _make_job()
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),

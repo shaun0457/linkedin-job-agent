@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
-from agent.models import Job, TailoredResult
+from agent.models import Job, TailoredResult, SearchConfig
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
@@ -28,6 +28,17 @@ def _make_result(job: Job) -> TailoredResult:
         rm_job_id="rm-1",
         master_resume_id="master-1",
         keywords_added=["PyTorch"],
+    )
+
+
+def _mock_search_config() -> SearchConfig:
+    return SearchConfig(
+        keywords=["ML Engineer"],
+        location="London, UK",
+        experience_level=["MID_SENIOR_LEVEL"],
+        blacklist_companies=[],
+        max_jobs_per_run=10,
+        time_filter="r86400",
     )
 
 
@@ -63,6 +74,7 @@ async def test_pipeline_happy_path_tailors_and_notifies(mock_app, mock_settings)
     results = [_make_result(j) for j in jobs]
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=jobs),
         patch("main.filter_new", return_value=jobs),
@@ -91,6 +103,7 @@ async def test_pipeline_insert_job_receives_correct_fields(mock_app, mock_settin
     result = _make_result(job)
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
@@ -118,6 +131,7 @@ async def test_pipeline_aborts_if_no_master_resume(mock_app, mock_settings):
     from main import run_pipeline
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value=None)),
         patch("main.notifier.notify_error", new=AsyncMock()) as mock_error,
         patch("main.scrape_jobs_mock") as mock_scrape,
@@ -140,6 +154,7 @@ async def test_pipeline_no_new_jobs_expands_time_and_retries(mock_app, mock_sett
 
     # First scrape (24h): all seen. Second scrape (1w): finds new job.
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", side_effect=[[_make_job()], [job_new]]) as mock_scrape,
         patch("main.filter_new", side_effect=[[], [job_new]]),
@@ -161,6 +176,7 @@ async def test_pipeline_no_new_jobs_all_retries_exhausted(mock_app, mock_setting
     from main import run_pipeline
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[_make_job()]),
         patch("main.filter_new", return_value=[]),  # always 0
@@ -186,6 +202,7 @@ async def test_pipeline_counts_failed_tailoring(mock_app, mock_settings):
     result_ok = _make_result(job_ok)
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job_ok, job_fail]),
         patch("main.filter_new", return_value=[job_ok, job_fail]),
@@ -214,6 +231,7 @@ async def test_pipeline_scraper_exception_sends_error(mock_app, mock_settings):
     from main import run_pipeline
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", side_effect=RuntimeError("Apify down")),
         patch("main.notifier.notify_error", new=AsyncMock()) as mock_error,
@@ -237,6 +255,7 @@ async def test_pipeline_uses_real_scraper_when_token_is_real(mock_app, mock_sett
     job = _make_job()
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs", return_value=[job]) as mock_real_scrape,
         patch("main.scrape_jobs_mock") as mock_mock_scrape,
@@ -267,6 +286,7 @@ async def test_pipeline_with_scoring_passes_score_to_notify(mock_app, mock_setti
     scored_result = [ScoredJob(job=job, score=9, reason="Top company")]
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
@@ -293,6 +313,7 @@ async def test_pipeline_without_scoring_no_score_in_notify(mock_app, mock_settin
     job = _make_job()
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job]),
         patch("main.filter_new", return_value=[job]),
@@ -326,6 +347,7 @@ async def test_pipeline_scoring_preserves_sorted_order(mock_app, mock_settings):
     ]
 
     with (
+        patch("main.get_search_config", return_value=_mock_search_config()),
         patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
         patch("main.scrape_jobs_mock", return_value=[job_low, job_high]),
         patch("main.filter_new", return_value=[job_low, job_high]),
