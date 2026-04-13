@@ -97,3 +97,17 @@ def test_set_config_value_overwrite():
 
 def test_get_config_value_missing_key():
     assert db_module.get_config_value("nonexistent_key") is None
+
+
+def test_get_search_overrides_empty_when_no_config():
+    overrides = db_module.get_search_overrides()
+    assert overrides == {}
+
+
+def test_get_search_overrides_returns_decoded_values():
+    import json
+    db_module.set_config_value("location", json.dumps("Berlin"))
+    db_module.set_config_value("max_jobs_per_run", json.dumps(10))
+    overrides = db_module.get_search_overrides()
+    assert overrides["location"] == "Berlin"
+    assert overrides["max_jobs_per_run"] == 10
