@@ -1,6 +1,7 @@
 """Shared pytest fixtures for the linkedin-job-agent test suite."""
 import pytest
-import agent.db as db_module
+
+from agent import db
 
 
 @pytest.fixture(autouse=True)
@@ -11,5 +12,6 @@ def isolated_db(tmp_path, monkeypatch):
     ensures the search_config + seen_jobs tables always exist.
     """
     test_db = tmp_path / "test_jobs.db"
-    monkeypatch.setattr(db_module, "DB_PATH", test_db)
-    db_module.init_db()
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    db.init_db()
+    yield
