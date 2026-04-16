@@ -305,6 +305,7 @@ def test_build_search_urls_no_location():
     assert "location=" not in urls[0]
 
 
+
 def test_build_search_urls_includes_time_filter():
     config = _make_config(time_filter="r86400")
     urls = _build_search_urls(config)

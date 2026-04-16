@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from agent.models import Job, TailoredResult
 
 
+
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
 
