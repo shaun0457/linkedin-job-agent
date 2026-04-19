@@ -97,6 +97,7 @@ async def test_cmd_help_lists_all_key_commands():
     await cmd_help(update, context)
 
     text = update.message.reply_text.call_args.args[0]
-    # All major commands should be mentioned
+    # All major commands should be mentioned (underscores are MarkdownV2-escaped as \_)
     for cmd in ["/run", "/status", "/pending", "/list", "/retry", "/help"]:
         assert cmd in text, f"Missing {cmd} in /help output"
+    assert "search" in text and "config" in text, "Missing /search_config in /help output"
