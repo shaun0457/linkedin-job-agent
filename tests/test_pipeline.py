@@ -344,3 +344,71 @@ async def test_pipeline_scoring_preserves_sorted_order(mock_app, mock_settings):
     assert first_call.kwargs["score"] == 9
     second_call = mock_notify.call_args_list[1]
     assert second_call.kwargs["score"] == 3
+
+
+# ── time filter edge cases ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_pipeline_unknown_time_filter_starts_from_beginning(mock_app, mock_settings):
+    """When time_filter is not in _TIME_ESCALATION (e.g. ''), escalation starts from r86400."""
+    from main import run_pipeline
+
+    job = _make_job()
+
+    with (
+        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
+        patch("main.get_search_config") as mock_cfg,
+        patch("main.scrape_jobs_mock", return_value=[job]) as mock_scrape,
+        patch("main.filter_new", return_value=[job]),
+        patch("main.improver.tailor_resume", new=AsyncMock(return_value=_make_result(job))),
+        patch("main.db.insert_job"),
+        patch("main.notifier.notify_job", new=AsyncMock()),
+        patch("main.notifier.notify_run_summary", new=AsyncMock()),
+    ):
+        from agent.models import SearchConfig
+        mock_cfg.return_value = SearchConfig(
+            keywords=["ML"],
+            location="Remote",
+            experience_level=[],
+            blacklist_companies=[],
+            max_jobs_per_run=10,
+            time_filter="",  # not in _TIME_ESCALATION → ValueError → start_idx=0
+        )
+        await run_pipeline(mock_app, mock_settings)
+
+    # Scraper should have been called (pipeline ran successfully)
+    mock_scrape.assert_called_once()
+    # The time_filter passed should be r86400 (first in escalation)
+    call_cfg = mock_scrape.call_args.args[0]
+    assert call_cfg.time_filter == "r86400"
+
+
+# ── all tailoring fails ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_pipeline_all_tailoring_fails_summary_shows_zero_tailored(mock_app, mock_settings):
+    """When every tailor_resume call returns None, summary shows tailored=0, failed=N."""
+    from main import run_pipeline
+
+    jobs = [_make_job("j1"), _make_job("j2", "OtherCorp")]
+
+    with (
+        patch("main.improver.get_master_resume_id", new=AsyncMock(return_value="master-1")),
+        patch("main.scrape_jobs_mock", return_value=jobs),
+        patch("main.filter_new", return_value=jobs),
+        patch("main.improver.tailor_resume", new=AsyncMock(return_value=None)),
+        patch("main.db.insert_job") as mock_insert,
+        patch("main.notifier.notify_job", new=AsyncMock()) as mock_notify,
+        patch("main.notifier.notify_run_summary", new=AsyncMock()) as mock_summary,
+    ):
+        await run_pipeline(mock_app, mock_settings)
+
+    mock_insert.assert_not_called()
+    mock_notify.assert_not_awaited()
+    mock_summary.assert_awaited_once()
+    kw = mock_summary.call_args.kwargs
+    assert kw["found"] == 2
+    assert kw["tailored"] == 0
+    assert kw["failed"] == 2
