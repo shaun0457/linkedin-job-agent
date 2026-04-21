@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_notify_run_summary_sends_message():
-    """notify_run_summary must send a Telegram message with correct counts."""
+    """notify_run_summary sends English-format message with correct counts."""
     from agent.notifier import notify_run_summary
 
     mock_app = MagicMock()
@@ -19,13 +19,13 @@ async def test_notify_run_summary_sends_message():
 
     mock_app.bot.send_message.assert_awaited_once()
     call_kwargs = mock_app.bot.send_message.call_args
-    text = call_kwargs.kwargs.get("text") or call_kwargs.args[1] if call_kwargs.args else ""
-    if not text:
-        text = call_kwargs[1].get("text", "")
+    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
+    text = kwargs.get("text", "")
 
-    assert "5" in text
-    assert "3" in text
-    assert "1" in text
+    assert "Run complete" in text
+    assert "5 new jobs found" in text
+    assert "3 tailored" in text
+    assert "1 failed" in text
 
 
 @pytest.mark.asyncio
