@@ -29,6 +29,27 @@ async def test_notify_run_summary_sends_message():
 
 
 @pytest.mark.asyncio
+async def test_notify_run_summary_english_format():
+    """notify_run_summary must use the English one-liner format."""
+    from agent.notifier import notify_run_summary
+
+    mock_app = MagicMock()
+    mock_app.bot = AsyncMock()
+    mock_app.bot.send_message = AsyncMock()
+
+    await notify_run_summary(mock_app, "12345", found=5, tailored=3, failed=1)
+
+    call_kwargs = mock_app.bot.send_message.call_args
+    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
+    text = kwargs.get("text", "")
+
+    assert "Run complete" in text
+    assert "new jobs found" in text
+    assert "tailored" in text
+    assert "failed" in text
+
+
+@pytest.mark.asyncio
 async def test_notify_run_summary_uses_markdownv2():
     from agent.notifier import notify_run_summary
 
