@@ -96,7 +96,9 @@ async def test_cmd_help_lists_all_key_commands():
 
     await cmd_help(update, context)
 
-    text = update.message.reply_text.call_args.args[0]
-    # All major commands should be mentioned
-    for cmd in ["/run", "/status", "/pending", "/list", "/retry", "/help"]:
+    raw = update.message.reply_text.call_args.args[0]
+    # Strip MarkdownV2 backslash escapes before checking command names
+    text = raw.replace("\\", "")
+    for cmd in ["/run", "/status", "/pending", "/list", "/retry", "/help",
+                "/search_config", "/time"]:
         assert cmd in text, f"Missing {cmd} in /help output"

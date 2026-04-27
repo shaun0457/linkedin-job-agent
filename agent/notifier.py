@@ -458,6 +458,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/set\\_max `<n>` \\- Set max jobs per run\n"
         "/set\\_experience\\_level `<level1, level2>` \\- Update experience filter\n"
         "/set\\_blacklist `<co1, co2>` \\- Update company blacklist\n"
+        "/time `<24h|1w|1m|none>` \\- Set job posting time filter\n"
         "/health \\- Check Resume Matcher API connectivity\n"
         "/help \\- Show this help message"
     )
