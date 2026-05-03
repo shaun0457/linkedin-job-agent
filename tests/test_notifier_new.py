@@ -160,3 +160,29 @@ async def test_cmd_search_config_empty_blacklist():
         await cmd_search_config(mock_update, mock_context)
 
     mock_update.message.reply_text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cmd_search_config_uses_markdownv2():
+    """cmd_search_config must reply with parse_mode=MarkdownV2."""
+    from agent.notifier import cmd_search_config
+    from agent.models import SearchConfig
+
+    mock_sc = SearchConfig(
+        keywords=["AI Engineer"],
+        location="Germany",
+        experience_level=["MID_SENIOR_LEVEL"],
+        blacklist_companies=[],
+        max_jobs_per_run=10,
+    )
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+
+    with patch("agent.notifier.cfg.get_search_config", return_value=mock_sc):
+        await cmd_search_config(mock_update, mock_context)
+
+    call_kwargs = mock_update.message.reply_text.call_args.kwargs
+    assert call_kwargs.get("parse_mode") == "MarkdownV2"
