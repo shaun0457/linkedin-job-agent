@@ -471,6 +471,7 @@ async def cmd_search_config(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     blacklist_text = _esc(", ".join(sc.blacklist_companies) if sc.blacklist_companies else "—")
     kw_text = _esc(", ".join(sc.keywords))
     loc_text = _esc(sc.location)
+    time_label = _esc(_TIME_FILTER_LABELS.get(sc.time_filter, sc.time_filter or "不限"))
 
     text = (
         "⚙️ *完整搜尋設定*\n\n"
@@ -478,7 +479,8 @@ async def cmd_search_config(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"📍 地點：{loc_text}\n"
         f"📊 最多職缺數：{sc.max_jobs_per_run}\n"
         f"🎯 經驗等級：{exp_text}\n"
-        f"🚫 排除公司：{blacklist_text}"
+        f"🚫 排除公司：{blacklist_text}\n"
+        f"🕐 時間篩選：{time_label}"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
 

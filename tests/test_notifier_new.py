@@ -142,3 +142,31 @@ async def test_cmd_search_config_empty_blacklist():
         await cmd_search_config(mock_update, mock_context)
 
     mock_update.message.reply_text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cmd_search_config_shows_time_filter():
+    """cmd_search_config must include the current time_filter as a readable label."""
+    from agent.notifier import cmd_search_config
+    from agent.models import SearchConfig
+
+    mock_sc = SearchConfig(
+        keywords=["AI Engineer"],
+        location="Remote",
+        experience_level=["MID_SENIOR_LEVEL"],
+        blacklist_companies=[],
+        max_jobs_per_run=10,
+        time_filter="r604800",
+    )
+
+    mock_update = MagicMock()
+    mock_update.message = AsyncMock()
+    mock_update.message.reply_text = AsyncMock()
+    mock_context = MagicMock()
+
+    with patch("agent.notifier.cfg.get_search_config", return_value=mock_sc):
+        await cmd_search_config(mock_update, mock_context)
+
+    call_args = mock_update.message.reply_text.call_args
+    text = call_args.args[0] if call_args.args else call_args.kwargs.get("text", "")
+    assert "過去一週" in text
