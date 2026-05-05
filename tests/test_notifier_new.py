@@ -58,6 +58,26 @@ async def test_notify_run_summary_chat_id_passed():
     assert kwargs.get("chat_id") == "999888"
 
 
+@pytest.mark.asyncio
+async def test_notify_run_summary_english_format():
+    """notify_run_summary uses English one-liner: 'Run complete: X new jobs found, ...'"""
+    from agent.notifier import notify_run_summary
+
+    mock_app = MagicMock()
+    mock_app.bot = AsyncMock()
+    mock_app.bot.send_message = AsyncMock()
+
+    await notify_run_summary(mock_app, "12345", found=7, tailored=5, failed=2)
+
+    call_kwargs = mock_app.bot.send_message.call_args
+    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
+    text = kwargs.get("text", "")
+    assert "Run complete" in text
+    assert "7" in text
+    assert "5" in text
+    assert "2" in text
+
+
 # ── cmd_search_config ───────────────────────────────────────────────────────
 
 
