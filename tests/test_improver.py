@@ -9,7 +9,7 @@ from agent.models import Job
 from agent import improver
 
 
-# ── fixtures ───────────────────────────────────────────────────────────────
+# ── fixtures ───────────────────────────────────────────────────────────────────
 
 SAMPLE_JOB = Job(
     job_id="test-001",
@@ -91,7 +91,7 @@ LIST_RESUMES_RESPONSE = {
 }
 
 
-# ── _upload_job ─────────────────────────────────────────────────────────────
+# ── _upload_job ─────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -112,6 +112,7 @@ async def test_upload_job_sends_correct_body():
         result = await improver._upload_job(client, SAMPLE_JOB)
 
     assert result == RM_JOB_ID
+    assert captured["url"] == "/api/v1/jobs/upload"
     assert captured["json"]["job_descriptions"] == [SAMPLE_JOB.description]
     assert "content" not in captured["json"]
     assert "title" not in captured["json"]
@@ -145,7 +146,7 @@ async def test_upload_job_returns_none_on_http_error():
     assert result is None
 
 
-# ── _improve_preview ────────────────────────────────────────────────────────
+# ── _improve_preview ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -175,6 +176,7 @@ async def test_improve_preview_sends_correct_body():
     captured = {}
 
     async def mock_post(url, json=None, **kwargs):
+        captured["url"] = url
         captured["json"] = json
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
@@ -185,6 +187,7 @@ async def test_improve_preview_sends_correct_body():
         client.post = mock_post
         await improver._improve_preview(client, MASTER_RESUME_ID, RM_JOB_ID)
 
+    assert captured["url"] == "/api/v1/resumes/improve/preview"
     assert captured["json"]["resume_id"] == MASTER_RESUME_ID
     assert captured["json"]["job_id"] == RM_JOB_ID
 
@@ -201,7 +204,7 @@ async def test_improve_preview_returns_none_on_error():
     assert result is None
 
 
-# ── get_master_resume_id ────────────────────────────────────────────────────
+# ── get_master_resume_id ────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -254,7 +257,7 @@ async def test_get_master_resume_id_returns_none_when_no_master():
     assert result is None
 
 
-# ── confirm_resume ──────────────────────────────────────────────────────────
+# ── confirm_resume ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -285,6 +288,7 @@ async def test_confirm_resume_sends_full_payload():
         )
 
     assert result == "resume-confirmed-789"
+    assert captured["url"] == "/api/v1/resumes/improve/confirm"
     assert captured["json"]["resume_id"] == MASTER_RESUME_ID
     assert captured["json"]["job_id"] == RM_JOB_ID
     assert "improved_data" in captured["json"]
@@ -314,7 +318,7 @@ async def test_confirm_resume_returns_none_on_failure():
     assert result is None
 
 
-# ── tailor_resume (integration) ─────────────────────────────────────────────
+# ── tailor_resume (integration) ─────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
