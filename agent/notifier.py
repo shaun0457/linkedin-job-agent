@@ -107,12 +107,7 @@ async def notify_run_summary(
     app: Application, chat_id: str, found: int, tailored: int, failed: int
 ) -> None:
     """Send a run summary after each pipeline execution."""
-    text = (
-        f"✅ *Run complete*\n"
-        f"• 發現新職缺：{found}\n"
-        f"• 已客製化：{tailored}\n"
-        f"• 失敗：{failed}"
-    )
+    text = f"✅ Run complete: {found} new jobs found, {tailored} tailored, {failed} failed"
     await app.bot.send_message(
         chat_id=chat_id,
         text=text,
