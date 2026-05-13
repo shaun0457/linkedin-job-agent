@@ -44,6 +44,24 @@ async def test_notify_run_summary_uses_markdownv2():
 
 
 @pytest.mark.asyncio
+async def test_notify_run_summary_message_format():
+    """notify_run_summary message matches spec: 'Run complete: X new jobs found, Y tailored, Z failed'."""
+    from agent.notifier import notify_run_summary
+
+    mock_app = MagicMock()
+    mock_app.bot = AsyncMock()
+    mock_app.bot.send_message = AsyncMock()
+
+    await notify_run_summary(mock_app, "12345", found=4, tailored=3, failed=1)
+
+    text = mock_app.bot.send_message.call_args.kwargs["text"]
+    assert "Run complete" in text
+    assert "4 new jobs found" in text
+    assert "3 tailored" in text
+    assert "1 failed" in text
+
+
+@pytest.mark.asyncio
 async def test_notify_run_summary_chat_id_passed():
     from agent.notifier import notify_run_summary
 
