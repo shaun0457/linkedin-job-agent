@@ -157,7 +157,7 @@ async def test_pipeline_no_new_jobs_expands_time_and_retries(mock_app, mock_sett
 
 @pytest.mark.asyncio
 async def test_pipeline_no_new_jobs_all_retries_exhausted(mock_app, mock_settings):
-    """When all time ranges exhausted with 0 new jobs, no summary is sent."""
+    """When all time ranges exhausted with 0 new jobs, no summary is sent (found=0)."""
     from main import run_pipeline
 
     with (
@@ -168,6 +168,7 @@ async def test_pipeline_no_new_jobs_all_retries_exhausted(mock_app, mock_setting
     ):
         await run_pipeline(mock_app, mock_settings)
 
+    # notify_run_summary is only called when found > 0
     mock_summary.assert_not_awaited()
 
 

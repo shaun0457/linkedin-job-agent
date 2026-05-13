@@ -106,7 +106,7 @@ async def notify_error(app: Application, chat_id: str, message: str) -> None:
 async def notify_run_summary(
     app: Application, chat_id: str, found: int, tailored: int, failed: int
 ) -> None:
-    """Send a run summary after each pipeline execution."""
+    """Send a run summary after each pipeline execution (only called when found > 0)."""
     text = f"✅ Run complete: {found} new jobs found, {tailored} tailored, {failed} failed"
     await app.bot.send_message(
         chat_id=chat_id,
@@ -431,11 +431,11 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             await client.get(url)
-        await update.message.reply_text("\u2705 Resume Matcher \u6b63\u5e38")
+        await update.message.reply_text("✅ Resume Matcher 正常")
     except httpx.TimeoutException:
-        await update.message.reply_text("\u23f1\ufe0f Resume Matcher \u9023\u7dda\u903e\u6642")
+        await update.message.reply_text("⏱️ Resume Matcher 連線逾時")
     except httpx.ConnectError:
-        await update.message.reply_text("\u26a0\ufe0f Resume Matcher \u7121\u6cd5\u9023\u7dda")
+        await update.message.reply_text("⚠️ Resume Matcher 無法連線")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
