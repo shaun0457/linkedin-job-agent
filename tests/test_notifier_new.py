@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_notify_run_summary_sends_message():
-    """notify_run_summary sends English-format message with correct counts."""
+    """notify_run_summary must send: '✅ Run complete: X new jobs found, Y tailored, Z failed'."""
     from agent.notifier import notify_run_summary
 
     mock_app = MagicMock()
@@ -18,10 +18,7 @@ async def test_notify_run_summary_sends_message():
     await notify_run_summary(mock_app, "12345", found=5, tailored=3, failed=1)
 
     mock_app.bot.send_message.assert_awaited_once()
-    call_kwargs = mock_app.bot.send_message.call_args
-    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-    text = kwargs.get("text", "")
-
+    text = mock_app.bot.send_message.call_args.kwargs["text"]
     assert "Run complete" in text
     assert "5 new jobs found" in text
     assert "3 tailored" in text
@@ -38,9 +35,7 @@ async def test_notify_run_summary_uses_markdownv2():
 
     await notify_run_summary(mock_app, "12345", found=2, tailored=2, failed=0)
 
-    call_kwargs = mock_app.bot.send_message.call_args
-    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-    assert kwargs.get("parse_mode") == "MarkdownV2"
+    assert mock_app.bot.send_message.call_args.kwargs["parse_mode"] == "MarkdownV2"
 
 
 @pytest.mark.asyncio
@@ -53,9 +48,22 @@ async def test_notify_run_summary_chat_id_passed():
 
     await notify_run_summary(mock_app, "999888", found=1, tailored=1, failed=0)
 
-    call_kwargs = mock_app.bot.send_message.call_args
-    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-    assert kwargs.get("chat_id") == "999888"
+    assert mock_app.bot.send_message.call_args.kwargs["chat_id"] == "999888"
+
+
+@pytest.mark.asyncio
+async def test_notify_run_summary_format_matches_spec():
+    """Exact format: '✅ Run complete: X new jobs found, Y tailored, Z failed'."""
+    from agent.notifier import notify_run_summary
+
+    mock_app = MagicMock()
+    mock_app.bot = AsyncMock()
+    mock_app.bot.send_message = AsyncMock()
+
+    await notify_run_summary(mock_app, "12345", found=4, tailored=3, failed=1)
+
+    text = mock_app.bot.send_message.call_args.kwargs["text"]
+    assert text == "✅ Run complete: 4 new jobs found, 3 tailored, 1 failed"
 
 
 # ── cmd_search_config ───────────────────────────────────────────────────────
