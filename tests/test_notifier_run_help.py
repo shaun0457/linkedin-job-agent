@@ -98,7 +98,7 @@ async def test_cmd_help_lists_all_key_commands():
 
     text = update.message.reply_text.call_args.args[0]
     # All major commands should be mentioned
-    for cmd in ["/run", "/status", "/pending", "/list", "/retry", "/help"]:
+    for cmd in ["/run", "/status", "/pending", "/list", "/retry", "/config", "/help"]:
         assert cmd in text, f"Missing {cmd} in /help output"
     # /search_config appears with MarkdownV2 underscore escaping as search\_config
     assert "search\\_config" in text, "Missing /search_config in /help output"
