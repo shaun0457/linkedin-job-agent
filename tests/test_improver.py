@@ -96,7 +96,7 @@ LIST_RESUMES_RESPONSE = {
 
 @pytest.mark.asyncio
 async def test_upload_job_sends_correct_body():
-    """_upload_job must POST job_descriptions as a list, not content/title."""
+    """_upload_job forwards job_descriptions and master_resume_id to RM."""
     captured = {}
 
     async def mock_post(url, json=None, **kwargs):
@@ -109,12 +109,33 @@ async def test_upload_job_sends_correct_body():
 
     async with httpx.AsyncClient() as client:
         client.post = mock_post
-        result = await improver._upload_job(client, SAMPLE_JOB)
+        result = await improver._upload_job(client, SAMPLE_JOB, MASTER_RESUME_ID)
 
     assert result == RM_JOB_ID
     assert captured["json"]["job_descriptions"] == [SAMPLE_JOB.description]
+    assert captured["json"]["resume_id"] == MASTER_RESUME_ID
     assert "content" not in captured["json"]
     assert "title" not in captured["json"]
+
+
+@pytest.mark.asyncio
+async def test_upload_job_omits_resume_id_when_not_provided():
+    """_upload_job omits resume_id key when master_resume_id is absent."""
+    captured = {}
+
+    async def mock_post(url, json=None, **kwargs):
+        captured["json"] = json
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = JOB_UPLOAD_RESPONSE
+        return resp
+
+    async with httpx.AsyncClient() as client:
+        client.post = mock_post
+        await improver._upload_job(client, SAMPLE_JOB)
+
+    assert "resume_id" not in captured["json"]
+    assert captured["json"]["job_descriptions"] == [SAMPLE_JOB.description]
 
 
 @pytest.mark.asyncio
