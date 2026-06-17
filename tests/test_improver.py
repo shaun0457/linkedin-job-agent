@@ -96,7 +96,7 @@ LIST_RESUMES_RESPONSE = {
 
 @pytest.mark.asyncio
 async def test_upload_job_sends_correct_body():
-    """_upload_job must POST job_descriptions as a list, not content/title."""
+    """_upload_job must POST job_descriptions list AND resume_id; no content/title."""
     captured = {}
 
     async def mock_post(url, json=None, **kwargs):
@@ -109,10 +109,12 @@ async def test_upload_job_sends_correct_body():
 
     async with httpx.AsyncClient() as client:
         client.post = mock_post
-        result = await improver._upload_job(client, SAMPLE_JOB)
+        result = await improver._upload_job(client, SAMPLE_JOB, MASTER_RESUME_ID)
 
     assert result == RM_JOB_ID
     assert captured["json"]["job_descriptions"] == [SAMPLE_JOB.description]
+    # resume_id must be forwarded so RM can link JD → master resume
+    assert captured["json"]["resume_id"] == MASTER_RESUME_ID
     assert "content" not in captured["json"]
     assert "title" not in captured["json"]
 
@@ -128,7 +130,7 @@ async def test_upload_job_returns_first_job_id():
 
     async with httpx.AsyncClient() as client:
         client.post = mock_post
-        result = await improver._upload_job(client, SAMPLE_JOB)
+        result = await improver._upload_job(client, SAMPLE_JOB, MASTER_RESUME_ID)
 
     assert result == "id-1"
 
@@ -140,7 +142,7 @@ async def test_upload_job_returns_none_on_http_error():
 
     async with httpx.AsyncClient() as client:
         client.post = mock_post
-        result = await improver._upload_job(client, SAMPLE_JOB)
+        result = await improver._upload_job(client, SAMPLE_JOB, MASTER_RESUME_ID)
 
     assert result is None
 
