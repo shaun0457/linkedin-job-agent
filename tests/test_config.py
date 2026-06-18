@@ -135,6 +135,14 @@ def test_set_blacklist_companies_empty_list():
     mock_set.assert_called_once_with("blacklist_companies", json.dumps([]))
 
 
+def test_set_time_filter_stores_json():
+    from agent.config import set_time_filter
+
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_time_filter("r604800")
+    mock_set.assert_called_once_with("time_filter", json.dumps("r604800"))
+
+
 # ── save_yaml ────────────────────────────────────────────────────────────────
 
 
