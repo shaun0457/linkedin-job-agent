@@ -118,6 +118,44 @@ async def test_upload_job_sends_correct_body():
 
 
 @pytest.mark.asyncio
+async def test_upload_job_sends_resume_id():
+    """_upload_job must pass resume_id to link the JD to a resume in RM's DB."""
+    captured = {}
+
+    async def mock_post(url, json=None, **kwargs):
+        captured["json"] = json
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = JOB_UPLOAD_RESPONSE
+        return resp
+
+    async with httpx.AsyncClient() as client:
+        client.post = mock_post
+        await improver._upload_job(client, SAMPLE_JOB, resume_id=MASTER_RESUME_ID)
+
+    assert captured["json"]["resume_id"] == MASTER_RESUME_ID
+
+
+@pytest.mark.asyncio
+async def test_upload_job_resume_id_defaults_to_none():
+    """_upload_job sends resume_id=None when not supplied."""
+    captured = {}
+
+    async def mock_post(url, json=None, **kwargs):
+        captured["json"] = json
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = JOB_UPLOAD_RESPONSE
+        return resp
+
+    async with httpx.AsyncClient() as client:
+        client.post = mock_post
+        await improver._upload_job(client, SAMPLE_JOB)
+
+    assert captured["json"]["resume_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_upload_job_returns_first_job_id():
     """_upload_job returns the first element of job_id list."""
     async def mock_post(url, json=None, **kwargs):
@@ -315,6 +353,33 @@ async def test_confirm_resume_returns_none_on_failure():
 
 
 # ── tailor_resume (integration) ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tailor_resume_passes_resume_id_to_upload():
+    """tailor_resume must forward master_resume_id to _upload_job."""
+    upload_captured = {}
+
+    async def mock_post(url, json=None, **kwargs):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        if "jobs/upload" in url:
+            upload_captured["json"] = json
+            resp.json.return_value = JOB_UPLOAD_RESPONSE
+        else:
+            resp.json.return_value = PREVIEW_RESPONSE
+        return resp
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = mock_post
+        MockClient.return_value = mock_client
+
+        await improver.tailor_resume("http://localhost:8000", MASTER_RESUME_ID, SAMPLE_JOB)
+
+    assert upload_captured["json"]["resume_id"] == MASTER_RESUME_ID
 
 
 @pytest.mark.asyncio

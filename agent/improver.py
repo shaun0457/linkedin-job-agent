@@ -17,7 +17,7 @@ async def tailor_resume(
 ) -> TailoredResult | None:
     """Upload JD to Resume Matcher, run improve/preview, return TailoredResult or None."""
     async with httpx.AsyncClient(base_url=base_url, timeout=270) as client:
-        rm_job_id = await _upload_job(client, job)
+        rm_job_id = await _upload_job(client, job, master_resume_id)
         if rm_job_id is None:
             return None
 
@@ -84,12 +84,14 @@ async def get_master_resume_id(base_url: str) -> str | None:
 # ── internal helpers ───────────────────────────────────────────────────────
 
 
-async def _upload_job(client: httpx.AsyncClient, job: Job) -> str | None:
+async def _upload_job(
+    client: httpx.AsyncClient, job: Job, resume_id: str | None = None
+) -> str | None:
     """Upload JD text. Returns RM job_id string or None."""
     try:
         resp = await client.post(
             "/api/v1/jobs/upload",
-            json={"job_descriptions": [job.description]},
+            json={"job_descriptions": [job.description], "resume_id": resume_id},
         )
         resp.raise_for_status()
         return resp.json()["job_id"][0]
