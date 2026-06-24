@@ -81,9 +81,6 @@ async def run_pipeline(app: Application, settings: Settings) -> None:
 
     if not new_jobs:
         logger.info("No new jobs found after all time ranges")
-        await notifier.notify_run_summary(
-            app, settings.telegram_chat_id, found=0, tailored=0, failed=0,
-        )
         return
 
     # ── 4. AI Score (label, not filter) ──────────────────────────────
