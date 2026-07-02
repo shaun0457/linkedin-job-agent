@@ -8,3 +8,4 @@ dist/
 data/jobs.db
 .coverage
 htmlcov/
+.pytest_packages/
