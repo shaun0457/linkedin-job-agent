@@ -11,6 +11,7 @@ from agent.config import (
     set_max_jobs,
     set_experience_level,
     set_blacklist_companies,
+    set_time_filter,
 )
 from agent.models import SearchConfig
 
@@ -127,6 +128,12 @@ def test_set_blacklist_companies_stores_json():
     mock_set.assert_called_once_with(
         "blacklist_companies", json.dumps(["EvilCorp", "SpamInc"])
     )
+
+
+def test_set_time_filter_stores_json():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_time_filter("r86400")
+    mock_set.assert_called_once_with("time_filter", json.dumps("r86400"))
 
 
 def test_set_blacklist_companies_empty_list():
