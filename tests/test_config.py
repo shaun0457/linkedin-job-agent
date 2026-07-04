@@ -130,16 +130,16 @@ def test_set_blacklist_companies_stores_json():
     )
 
 
-def test_set_blacklist_companies_empty_list():
-    with patch("agent.config.db.set_config_value") as mock_set:
-        set_blacklist_companies([])
-    mock_set.assert_called_once_with("blacklist_companies", json.dumps([]))
-
-
 def test_set_time_filter_stores_json():
     with patch("agent.config.db.set_config_value") as mock_set:
         set_time_filter("r86400")
     mock_set.assert_called_once_with("time_filter", json.dumps("r86400"))
+
+
+def test_set_blacklist_companies_empty_list():
+    with patch("agent.config.db.set_config_value") as mock_set:
+        set_blacklist_companies([])
+    mock_set.assert_called_once_with("blacklist_companies", json.dumps([]))
 
 
 # ── save_yaml ────────────────────────────────────────────────────────────────
